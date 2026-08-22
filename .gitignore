@@ -1,0 +1,26 @@
+# Entorno
+.env
+.env.local
+*.local
+
+# Dependencias
+/vendor/
+/node_modules/
+
+# Datos y respaldos locales
+/data/*.sqlite
+/data/*.db
+/backups/
+*.sql.gz
+
+# Logs y temporales
+*.log
+/tmp/
+/storage/cache/
+/storage/sessions/
+
+# Sistema operativo / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
