@@ -5,14 +5,7 @@ import { Dialogo } from '../componentes/Dialogo';
 import { PedirAutorizacion } from '../componentes/PedirAutorizacion';
 import { TecladoNumerico } from '../componentes/TecladoNumerico';
 import { useSesion } from '../estado/Sesion';
-import {
-  cantidadLegible,
-  ETIQUETAS_METODO,
-  pesos,
-  type Cuenta,
-  type MetodoPago,
-  type Orden,
-} from '../tipos';
+import { cantidadLegible, ETIQUETAS_METODO, pesos, type Cuenta, type MetodoPago, type Orden } from '../tipos';
 
 interface PagoBorrador {
   metodo: MetodoPago;
@@ -20,6 +13,8 @@ interface PagoBorrador {
   referencia: string;
   recibidoCentavos?: number;
 }
+
+type Separacion = null | 'menu' | 'iguales' | 'porPlatillo' | 'repartir';
 
 export function Cobro() {
   const { ordenId } = useParams();
@@ -33,7 +28,11 @@ export function Cobro() {
   const [pagos, setPagos] = useState<PagoBorrador[]>([]);
   const [metodo, setMetodo] = useState<MetodoPago>('efectivo');
   const [recibido, setRecibido] = useState('');
-  const [moviendo, setMoviendo] = useState<number | null>(null);
+  const [mostrarCobro, setMostrarCobro] = useState(false);
+  const [separando, setSeparando] = useState<Separacion>(null);
+  const [partes, setPartes] = useState(2);
+  const [pasando, setPasando] = useState<number | null>(null);
+  const [repartiendo, setRepartiendo] = useState<number | null>(null);
   const [descuentoBorrador, setDescuentoBorrador] = useState<{ tipo: 'monto' | 'porcentaje'; valor: number } | null>(null);
   const [pidiendoDescuento, setPidiendoDescuento] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,12 +42,16 @@ export function Cobro() {
     const [o, c] = await Promise.all([api.orden(id), api.cuentas(id)]);
     setOrden(o);
     setCuentas(c);
-    setCuentaId((previo) => previo ?? c.find((x) => x.estado === 'abierta')?.id ?? c[0]?.id ?? null);
+    setCuentaId((previo) => (previo && c.some((x) => x.id === previo) ? previo : c.find((x) => x.estado === 'abierta')?.id ?? c[0]?.id ?? null));
   }, [id]);
 
   useEffect(() => {
     cargar().catch((e) => setError(e instanceof ErrorApi ? e.message : 'No se pudo cargar la cuenta'));
   }, [cargar]);
+
+  useEffect(() => {
+    if (orden) setPartes(Math.max(2, orden.comensales));
+  }, [orden]);
 
   async function accion(fn: () => Promise<void>) {
     try {
@@ -65,15 +68,44 @@ export function Cobro() {
   const recibidoCentavos = Number(recibido || '0');
   const cambio = Math.max(0, recibidoCentavos - restante);
   const sugeridas = (config.propina_sugerida ?? '10,15,20').split(',').map((n) => Number(n.trim())).filter(Boolean);
-  // Si el cajero tecleó lo recibido, tiene que alcanzar: registrar un efectivo
-  // menor al cobro deja la caja cuadrando mal desde el primer minuto.
   const efectivoInsuficiente = metodo === 'efectivo' && recibidoCentavos > 0 && recibidoCentavos < restante;
+  const abiertas = cuentas.filter((c) => c.estado === 'abierta');
+  const separada = cuentas.length > 1;
 
-  const dividir = (partes: number) =>
+  const dividirIgual = (n: number) =>
     accion(async () => {
-      const nuevas = await api.dividirEnPartes(id, partes);
+      const nuevas = await api.dividirEnPartes(id, n);
       setCuentas(nuevas);
       setCuentaId(nuevas[0]?.id ?? null);
+      setPagos([]);
+      setSeparando(null);
+    });
+
+  const crearCuentasVacias = (n: number) =>
+    accion(async () => {
+      for (let i = cuentas.length; i < n; i++) await api.crearCuenta(id);
+      await cargar();
+      setSeparando(null);
+    });
+
+  const pasarLinea = (lineaId: number, destinoId: number) =>
+    accion(async () => {
+      setCuentas(await api.asignarLinea(destinoId, lineaId));
+      setPasando(null);
+      setPagos([]);
+    });
+
+  const repartirLinea = (lineaId: number, cuentaIds: number[]) =>
+    accion(async () => {
+      setCuentas(await api.repartirLinea(lineaId, cuentaIds));
+      setRepartiendo(null);
+      setPagos([]);
+    });
+
+  const quitarCuenta = (id_: number) =>
+    accion(async () => {
+      await api.eliminarCuenta(id_);
+      await cargar();
       setPagos([]);
     });
 
@@ -86,22 +118,10 @@ export function Cobro() {
       setPagos([]);
     });
 
-  const moverLinea = (lineaId: number, destinoId: number) =>
-    accion(async () => {
-      setCuentas(await api.asignarLinea(destinoId, lineaId));
-      setMoviendo(null);
-      setPagos([]);
-    });
-
   const aplicarDescuento = (datos: { pin: string; motivo: string }) =>
     accion(async () => {
       if (!cuenta || !descuentoBorrador) return;
-      await api.aplicarDescuento(cuenta.id, {
-        tipo: descuentoBorrador.tipo,
-        valor: descuentoBorrador.valor,
-        motivo: datos.motivo,
-        pinAutorizacion: datos.pin,
-      });
+      await api.aplicarDescuento(cuenta.id, { ...descuentoBorrador, motivo: datos.motivo, pinAutorizacion: datos.pin });
       setDescuentoBorrador(null);
       setPidiendoDescuento(false);
       await cargar();
@@ -112,12 +132,7 @@ export function Cobro() {
     if (restante <= 0) return;
     setPagos((previo) => [
       ...previo,
-      {
-        metodo,
-        montoCentavos: restante,
-        referencia: '',
-        ...(metodo === 'efectivo' && recibidoCentavos > 0 ? { recibidoCentavos } : {}),
-      },
+      { metodo, montoCentavos: restante, referencia: '', ...(metodo === 'efectivo' && recibidoCentavos > 0 ? { recibidoCentavos } : {}) },
     ]);
     setRecibido('');
   };
@@ -128,12 +143,7 @@ export function Cobro() {
       const finales: PagoBorrador[] =
         pagos.length > 0
           ? pagos
-          : [{
-              metodo,
-              montoCentavos: cuenta.totalCentavos,
-              referencia: '',
-              ...(metodo === 'efectivo' && recibidoCentavos > 0 ? { recibidoCentavos } : {}),
-            }];
+          : [{ metodo, montoCentavos: cuenta.totalCentavos, referencia: '', ...(metodo === 'efectivo' && recibidoCentavos > 0 ? { recibidoCentavos } : {}) }];
 
       setCobrando(true);
       try {
@@ -141,8 +151,9 @@ export function Cobro() {
         const r = await api.cobrar(cuenta.id, finales, nuevaClave());
         setPagos([]);
         setRecibido('');
+        setMostrarCobro(false);
         await cargar();
-        if (r.ordenCerrada) navegar('/salon');
+        if (r.ordenCerrada) navegar('/mesas');
       } finally {
         setCobrando(false);
       }
@@ -150,25 +161,19 @@ export function Cobro() {
 
   if (!orden || !cuenta) return <div className="cargando">Cargando la cuenta…</div>;
 
-  const abiertas = cuentas.filter((c) => c.estado === 'abierta');
-
   return (
-    <div className="contenido">
-      <div className="barra">
-        <button className="btn chico" onClick={() => navegar(`/orden/${orden.mesaId}`)}>◀ Orden</button>
+    <div className="contenido pantalla-cobro">
+      <div className="barra compacta">
+        <button className="btn chico" onClick={() => navegar('/mesas')}>◀ Mesas</button>
         <strong>Mesa {orden.mesaNombre}</strong>
-        <span className="tenue">folio {orden.folio} · {orden.meseroNombre}</span>
+        <span className="tenue">folio {orden.folio} · {orden.comensales}p</span>
         <span className="empuje" />
-        <button className="btn chico" onClick={() => accion(async () => { await api.crearCuenta(id); await cargar(); })}>
-          + Cuenta
-        </button>
-        <button className="btn chico" onClick={() => dividir(Math.max(2, orden.comensales))}>
-          Dividir entre {Math.max(2, orden.comensales)}
-        </button>
-        <button className="btn chico" onClick={() => window.print()}>Imprimir precuenta</button>
+        <button className="btn chico fantasma" onClick={() => window.print()}>Imprimir</button>
       </div>
 
-      {cuentas.length > 1 && (
+      {/* Las cuentas solo aparecen cuando de verdad hay más de una: en el caso
+          normal —una cuenta por mesa— esta fila no existe y no distrae. */}
+      {separada && (
         <div className="pestanas">
           {cuentas.map((c) => (
             <button
@@ -188,26 +193,35 @@ export function Cobro() {
       <div className="cuerpo">
         <div className="columna-cuenta">
           <div className="ticket">
-            <h2>{cuenta.nombre}</h2>
+            <h2>
+              {separada ? cuenta.nombre : 'Cuenta'}
+              {separada && cuenta.estado === 'abierta' && cuenta.lineas.length === 0 && (
+                <button className="btn chico peligro" onClick={() => quitarCuenta(cuenta.id)}>Quitar cuenta</button>
+              )}
+            </h2>
+
             {cuenta.lineas.length === 0 && <p className="tenue">Sin consumo asignado.</p>}
             {cuenta.lineas.map((l) => (
               <div key={l.id} className="linea">
                 <div className="linea-datos">
                   <span className="linea-cantidad">
                     {cantidadLegible(l.cantidadMilesimas, l.unidad)}
-                    {l.proporcionMilesimas < 1000 && ` (${Math.round(l.proporcionMilesimas / 10)}%)`}
                   </span>
                   <span className="linea-nombre">
                     {l.productoNombre}
                     {l.varianteNombre && <em> · {l.varianteNombre}</em>}
                     {l.esCortesia && <small className="nota">cortesía</small>}
+                    {(l.cuentaIds?.length ?? 1) > 1 && <small>compartido entre {l.cuentaIds!.length}</small>}
                   </span>
                   <span className="linea-importe">
-                    {pesos(Math.round((l.totalCentavos * l.proporcionMilesimas) / 1000))}
+                    {pesos(importeEnCuenta(l, cuentas))}
                   </span>
                 </div>
-                {cuenta.estado === 'abierta' && cuentas.length > 1 && (
-                  <button className="btn chico fantasma" onClick={() => setMoviendo(l.id)}>Mover</button>
+                {cuenta.estado === 'abierta' && separada && (
+                  <div className="linea-acciones">
+                    <button className="btn chico fantasma" onClick={() => setPasando(l.id)}>Pasar a…</button>
+                    <button className="btn chico fantasma" onClick={() => setRepartiendo(l.id)}>Repartir…</button>
+                  </div>
                 )}
               </div>
             ))}
@@ -226,30 +240,48 @@ export function Cobro() {
                   <span>{pesos(cuenta.impuestoCentavos)}</span>
                 </div>
               )}
-              {cuenta.propinaCentavos > 0 && (
-                <div><span>Propina</span><span>{pesos(cuenta.propinaCentavos)}</span></div>
-              )}
+              {cuenta.propinaCentavos > 0 && <div><span>Propina</span><span>{pesos(cuenta.propinaCentavos)}</span></div>}
               <div className="gran-total"><span>Total</span><span>{pesos(cuenta.totalCentavos)}</span></div>
             </div>
+
+            {/* Separar la cuenta es la excepción, no el camino: un enlace discreto
+                al pie, no un botón que compita con cobrar. */}
+            {cuenta.estado === 'abierta' && (
+              <button className="enlace-pie" onClick={() => setSeparando('menu')}>
+                {separada ? 'Ajustar cómo se reparte la cuenta' : '¿Van a pagar por separado?'}
+              </button>
+            )}
           </div>
         </div>
 
-        <aside className="panel derecho cobro">
+        <aside className={`panel derecho cobro${mostrarCobro ? ' hoja-abierta' : ''}`}>
+          <div className="hoja-encabezado">
+            <h2>{cuenta.estado === 'cobrada' ? 'Cuenta cobrada' : `Cobrar ${pesos(cuenta.totalCentavos)}`}</h2>
+            <button className="btn chico fantasma solo-movil" onClick={() => setMostrarCobro(false)}>Cerrar</button>
+          </div>
+
+          <div className="hoja-cuerpo">
           {cuenta.estado === 'cobrada' ? (
             <>
-              <h2>Cuenta cobrada</h2>
               {cuenta.pagos.map((p) => (
                 <p key={p.id}>
                   {ETIQUETAS_METODO[p.metodo]}: {pesos(p.montoCentavos)}
                   {p.cambioCentavos ? ` · cambio ${pesos(p.cambioCentavos)}` : ''}
                 </p>
               ))}
+              {abiertas.length > 0 && (
+                <button className="btn primario grande" onClick={() => { setCuentaId(abiertas[0]!.id); setMostrarCobro(false); }}>
+                  Sigue {abiertas[0]!.nombre} · {pesos(abiertas[0]!.totalCentavos)}
+                </button>
+              )}
               <button className="btn" onClick={() => window.print()}>Imprimir ticket</button>
             </>
+          ) : !puede('admin', 'cajero') ? (
+            <p className="detalle-dialogo">
+              El cobro lo hace caja. Avisa al cajero: la mesa ya aparece con la cuenta pedida.
+            </p>
           ) : (
             <>
-              <h2>Cobrar</h2>
-
               <div className="grupo-opciones">
                 <h3>Propina</h3>
                 <div className="opciones">
@@ -264,11 +296,7 @@ export function Cobro() {
                 <h3>Método</h3>
                 <div className="opciones">
                   {(Object.keys(ETIQUETAS_METODO) as MetodoPago[]).map((m) => (
-                    <button
-                      key={m}
-                      className={`opcion${metodo === m ? ' elegida' : ''}`}
-                      onClick={() => setMetodo(m)}
-                    >
+                    <button key={m} className={`opcion${metodo === m ? ' elegida' : ''}`} onClick={() => setMetodo(m)}>
                       {ETIQUETAS_METODO[m]}
                     </button>
                   ))}
@@ -315,19 +343,8 @@ export function Cobro() {
               <button className="btn" onClick={agregarPago} disabled={restante <= 0 || efectivoInsuficiente}>
                 Pago parcial (mixto)
               </button>
-
-              {puede('admin', 'cajero') && (
-                <button className="btn" onClick={() => setDescuentoBorrador({ tipo: 'porcentaje', valor: 10 })}>
-                  Aplicar descuento
-                </button>
-              )}
-
-              <button
-                className="btn primario grande"
-                disabled={cobrando || efectivoInsuficiente || (pagos.length > 0 && restante > 0)}
-                onClick={cobrar}
-              >
-                {cobrando ? 'Cobrando…' : `Cobrar ${pesos(cuenta.totalCentavos)}`}
+              <button className="btn" onClick={() => setDescuentoBorrador({ tipo: 'porcentaje', valor: 10 })}>
+                Aplicar descuento
               </button>
 
               {abiertas.length > 1 && (
@@ -335,17 +352,108 @@ export function Cobro() {
               )}
             </>
           )}
+          </div>
+
+          {/* La acción que cierra la venta no se esconde al fondo de un scroll. */}
+          {cuenta.estado === 'abierta' && puede('admin', 'cajero') && (
+            <div className="hoja-pie">
+              <button
+                className="btn primario grande"
+                disabled={cobrando || efectivoInsuficiente || (pagos.length > 0 && restante > 0)}
+                onClick={cobrar}
+              >
+                {cobrando ? 'Cobrando…' : `Cobrar ${pesos(cuenta.totalCentavos)}`}
+              </button>
+            </div>
+          )}
         </aside>
       </div>
 
-      {moviendo !== null && (
-        <Dialogo titulo="Mover a otra cuenta" onCerrar={() => setMoviendo(null)} ancho={380}>
+      {cuenta.estado === 'abierta' && puede('admin', 'cajero') && (
+        <div className="barra-inferior">
+          <button className="btn primario grande" onClick={() => setMostrarCobro(true)}>
+            Cobrar {pesos(cuenta.totalCentavos)}
+          </button>
+        </div>
+      )}
+
+      {/* ── Separar la cuenta, en lenguaje de piso ── */}
+      {separando === 'menu' && (
+        <Dialogo titulo="¿Cómo van a pagar?" onCerrar={() => setSeparando(null)} ancho={460}>
+          <button className="btn grande" onClick={() => setSeparando('iguales')}>
+            Partes iguales
+            <small>Cada quien paga lo mismo</small>
+          </button>
+          <button className="btn grande" onClick={() => setSeparando('porPlatillo')}>
+            Cada quien lo que pidió
+            <small>Se crean cuentas y repartes los platillos</small>
+          </button>
+          {separada && (
+            <button className="btn grande" onClick={() => setSeparando('repartir')}>
+              Repartir un platillo compartido
+              <small>La botana que pidieron entre todos</small>
+            </button>
+          )}
+          <p className="tenue">Si nadie lo pide, deja una sola cuenta: es lo normal.</p>
+        </Dialogo>
+      )}
+
+      {(separando === 'iguales' || separando === 'porPlatillo') && (
+        <Dialogo
+          titulo={separando === 'iguales' ? 'Partes iguales' : 'Cada quien lo que pidió'}
+          onCerrar={() => setSeparando(null)}
+          ancho={420}
+        >
+          <p className="detalle-dialogo">
+            {separando === 'iguales'
+              ? 'El total se divide en partes exactas. Sirve cuando compartieron todo.'
+              : 'Se crean las cuentas vacías y después pasas cada platillo a la suya con “Pasar a…”.'}
+          </p>
+          <div className="contador grande">
+            <button className="btn" onClick={() => setPartes((p) => Math.max(2, p - 1))}>−</button>
+            <span className="contador-valor">{partes}</span>
+            <button className="btn" onClick={() => setPartes((p) => Math.min(20, p + 1))}>+</button>
+          </div>
+          <div className="acciones-dialogo">
+            <button className="btn" onClick={() => setSeparando('menu')}>Atrás</button>
+            <button
+              className="btn primario"
+              onClick={() => (separando === 'iguales' ? dividirIgual(partes) : crearCuentasVacias(partes))}
+            >
+              {separando === 'iguales' ? `Dividir entre ${partes}` : `Crear ${partes} cuentas`}
+            </button>
+          </div>
+        </Dialogo>
+      )}
+
+      {pasando !== null && (
+        <Dialogo titulo="Pasar a otra cuenta" onCerrar={() => setPasando(null)} ancho={380}>
+          <p className="detalle-dialogo">El platillo completo se mueve a la cuenta que elijas.</p>
           <div className="opciones">
             {abiertas.map((c) => (
-              <button key={c.id} className="opcion" onClick={() => moverLinea(moviendo, c.id)}>
+              <button key={c.id} className="opcion" onClick={() => pasarLinea(pasando, c.id)}>
                 {c.nombre}
               </button>
             ))}
+          </div>
+        </Dialogo>
+      )}
+
+      {repartiendo !== null && (
+        <RepartirPlatillo
+          cuentas={abiertas}
+          onCerrar={() => setRepartiendo(null)}
+          onRepartir={(ids) => repartirLinea(repartiendo, ids)}
+        />
+      )}
+
+      {separando === 'repartir' && (
+        <Dialogo titulo="Repartir un platillo" onCerrar={() => setSeparando(null)} ancho={420}>
+          <p className="detalle-dialogo">
+            Toca “Repartir…” junto al platillo compartido en el ticket y elige entre qué cuentas se divide.
+          </p>
+          <div className="acciones-dialogo">
+            <button className="btn primario" onClick={() => setSeparando(null)}>Entendido</button>
           </div>
         </Dialogo>
       )}
@@ -394,4 +502,53 @@ export function Cobro() {
       )}
     </div>
   );
+}
+
+/** Un platillo compartido se divide entre las cuentas que lo comieron. */
+function RepartirPlatillo({
+  cuentas,
+  onCerrar,
+  onRepartir,
+}: {
+  cuentas: Cuenta[];
+  onCerrar: () => void;
+  onRepartir: (cuentaIds: number[]) => void;
+}) {
+  const [elegidas, setElegidas] = useState<Set<number>>(new Set(cuentas.map((c) => c.id)));
+
+  return (
+    <Dialogo titulo="Repartir entre…" onCerrar={onCerrar} ancho={400}>
+      <p className="detalle-dialogo">El importe se divide en partes exactas entre las cuentas que marques.</p>
+      <div className="opciones">
+        {cuentas.map((c) => (
+          <button
+            key={c.id}
+            className={`opcion${elegidas.has(c.id) ? ' elegida' : ''}`}
+            onClick={() =>
+              setElegidas((previo) => {
+                const siguiente = new Set(previo);
+                if (siguiente.has(c.id)) siguiente.delete(c.id);
+                else siguiente.add(c.id);
+                return siguiente;
+              })
+            }
+          >
+            {c.nombre}
+          </button>
+        ))}
+      </div>
+      <div className="acciones-dialogo">
+        <button className="btn" onClick={onCerrar}>Cancelar</button>
+        <button className="btn primario" disabled={elegidas.size === 0} onClick={() => onRepartir([...elegidas])}>
+          Repartir entre {elegidas.size}
+        </button>
+      </div>
+    </Dialogo>
+  );
+}
+
+/** Lo que le toca a esta cuenta de una línea que puede estar compartida. */
+function importeEnCuenta(linea: { id: number; totalCentavos: number; cuentaIds?: number[] }, cuentas: Cuenta[]): number {
+  const compartida = cuentas.filter((c) => c.lineas.some((l) => l.id === linea.id)).length || 1;
+  return Math.round(linea.totalCentavos / compartida);
 }

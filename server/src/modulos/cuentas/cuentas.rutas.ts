@@ -18,6 +18,10 @@ rutasCuentas.post('/asignar', (req, res) => {
   res.json(cuentas.asignarLinea(validar(E.asignacion, req.body)));
 });
 
+rutasCuentas.post('/repartir', (req, res) => {
+  res.json(cuentas.repartirLinea(validar(E.reparto, req.body)));
+});
+
 rutasCuentas.post('/orden/:ordenId/dividir', (req, res) => {
   const { partes } = validar(E.division, req.body);
   res.json(cuentas.dividirEnPartesIguales(idDeRuta(req.params.ordenId, 'ordenId'), partes));

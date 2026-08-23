@@ -1,5 +1,36 @@
 # 05 · Flujos y bocetos de pantalla
 
+## 0. Dónde empieza el mesero
+
+El flujo diario del mesero **no pasa por el plano del comedor**. El mesero conoce su
+salón de memoria; lo que no puede saber de un vistazo es qué mesa lleva 40 minutos
+esperando o cuál ya tiene comida lista en la barra. Por eso entra a **“Mis mesas”**:
+una lista ordenada por urgencia, pensada para un teléfono y para el pulgar.
+
+```
+┌─────────────────────────────────┐
+│ Mis mesas   1 en servicio       │
+├─────────────────────────────────┤
+│ ▍T-2  Listo para servir · 2     │
+│       Terraza · 4p · 18 min     │
+│                        $410.00  │
+│       [ Cuenta ]                │
+├─────────────────────────────────┤
+│ ▍T-5  Falta enviar a cocina · 3 │
+│       Terraza · 2p · 4 min      │
+│                        $180.00  │
+├─────────────────────────────────┤
+│ ▍S-1  Por limpiar               │
+│       [ Marcar limpia ]         │
+├─────────────────────────────────┤
+│        [ + Abrir mesa ]         │  ← zona del pulgar
+└─────────────────────────────────┘
+```
+
+El color del borde dice qué reclama atención antes de leer una palabra. El plano
+sigue existiendo en dos formas: el **editor** (escritorio, solo el dueño) y una
+**vista de consulta** a la que se llega desde aquí cuando de verdad hace falta.
+
 ## 1. Flujo principal del servicio
 
 ```mermaid

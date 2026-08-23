@@ -85,7 +85,10 @@ function BotonProducto({
   };
 
   return (
-    <div className={`producto${agotado ? ' agotado' : ''}`} style={color ? { borderTopColor: color } : undefined}>
+    <div
+      className={`producto${agotado ? ' agotado' : ''}${onAlternarDisponibilidad ? ' con-agotar' : ''}`}
+      style={color ? { borderTopColor: color } : undefined}
+    >
       <button className="producto-principal" disabled={agotado} onClick={() => onElegir(producto)}>
         <span className="producto-nombre">{producto.nombre}</span>
         {estilo.mostrarDescripcion && producto.descripcion && (

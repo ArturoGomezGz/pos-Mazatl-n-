@@ -216,3 +216,93 @@ test('el corte de caja cuadra con lo cobrado y detecta la diferencia', () => {
   const conRetiro = caja.resumenTurno(turno.id);
   assert.equal(conRetiro.esperadoEfectivoCentavos, esperado - 5_000);
 });
+
+/* ── Integridad de mesas y cuentas (hallazgos de la prueba de usabilidad) ── */
+
+test('una cuenta vacía no deja la mesa colgada: se elimina al cobrar la última con consumo', () => {
+  const mesaId = nuevaMesa();
+  const orden = ordenes.abrirOrden({ mesaId, comensales: 2 }, mesero.id);
+  const producto = menu.obtenerMenu().flatMap((c) => c.productos).find((p) => p.nombre === 'Guacamole')!;
+  ordenes.agregarLineas(orden.id, {
+    lineas: [{ varianteId: producto.variantes[0]!.id, cantidadMilesimas: 1000, nota: '', modificadoresIds: [] }],
+  });
+
+  // El mesero crea una segunda cuenta y nunca le asigna nada.
+  cuentas.crearCuenta(orden.id, 'Cuenta 2');
+  const abiertas = cuentas.cuentasDeOrden(orden.id);
+  assert.equal(abiertas.length, 2);
+
+  const conConsumo = abiertas.find((c) => c.lineas.length > 0)!;
+  const resultado = cuentas.cobrar(
+    conConsumo.id,
+    { pagos: [{ metodo: 'efectivo', montoCentavos: conConsumo.totalCentavos, referencia: '' }] },
+    admin.id,
+  );
+
+  assert.equal(resultado.ordenCerrada, true, 'la orden debe cerrarse pese a la cuenta vacía');
+  assert.equal(salon.obtenerMesa(mesaId, layoutId).estado, 'por_limpiar');
+  assert.equal(cuentas.cuentasDeOrden(orden.id).length, 1, 'la cuenta vacía se descarta');
+});
+
+test('una mesa abierta por error se cancela y queda libre', () => {
+  const mesaId = nuevaMesa();
+  const orden = ordenes.abrirOrden({ mesaId, comensales: 1 }, mesero.id);
+  ordenes.cancelarOrdenVacia(orden.id, mesero.id);
+
+  assert.equal(salon.obtenerMesa(mesaId, layoutId).estado, 'libre');
+  assert.equal(ordenes.ordenAbiertaDeMesa(mesaId), undefined, 'no debe quedar orden abierta');
+  // Y la mesa vuelve a servir: se puede abrir de nuevo.
+  ordenes.abrirOrden({ mesaId, comensales: 3 }, mesero.id);
+});
+
+test('una mesa con consumo NO se puede cancelar como si estuviera vacía', () => {
+  const mesaId = nuevaMesa();
+  const orden = ordenes.abrirOrden({ mesaId, comensales: 2 }, mesero.id);
+  const producto = menu.obtenerMenu().flatMap((c) => c.productos).find((p) => p.nombre === 'Guacamole')!;
+  ordenes.agregarLineas(orden.id, {
+    lineas: [{ varianteId: producto.variantes[0]!.id, cantidadMilesimas: 1000, nota: '', modificadoresIds: [] }],
+  });
+
+  assert.throws(() => ordenes.cancelarOrdenVacia(orden.id, mesero.id), /ya tiene consumo/);
+});
+
+test('repartir un platillo compartido divide el importe sin perder centavos', () => {
+  const mesaId = nuevaMesa();
+  const orden = ordenes.abrirOrden({ mesaId, comensales: 3 }, mesero.id);
+  const botana = menu.crearProducto({
+    categoriaId, nombre: 'Botana para tres', descripcion: '', estacion: 'cocina',
+    tipoVenta: 'simple', precioCentavos: 10_000, variantes: [], gruposIds: [],
+  });
+  const conLinea = ordenes.agregarLineas(orden.id, {
+    lineas: [{ varianteId: botana.variantes[0]!.id, cantidadMilesimas: 1000, nota: '', modificadoresIds: [] }],
+  });
+  const lineaId = conLinea.lineas[0]!.id;
+
+  const c2 = cuentas.crearCuenta(orden.id, 'Cuenta 2');
+  const c3 = cuentas.crearCuenta(orden.id, 'Cuenta 3');
+  const c1 = cuentas.cuentasDeOrden(orden.id)[0]!;
+
+  const repartidas = cuentas.repartirLinea({ lineaId, cuentaIds: [c1.id, c2.id, c3.id] });
+  const suma = repartidas.reduce((a, c) => a + c.subtotalCentavos, 0);
+
+  assert.equal(suma, 10_000, 'las tres partes deben sumar exactamente el platillo');
+  assert.deepEqual(repartidas.map((c) => c.subtotalCentavos).sort(), [3333, 3333, 3334]);
+});
+
+test('el tablero del mesero muestra lo que reclama atención', () => {
+  const mesaId = nuevaMesa();
+  const orden = ordenes.abrirOrden({ mesaId, comensales: 2 }, mesero.id);
+  const producto = menu.obtenerMenu().flatMap((c) => c.productos).find((p) => p.nombre === 'Guacamole')!;
+  ordenes.agregarLineas(orden.id, {
+    lineas: [{ varianteId: producto.variantes[0]!.id, cantidadMilesimas: 2000, nota: '', modificadoresIds: [] }],
+  });
+
+  const enTablero = ordenes.tablero().find((m) => m.id === mesaId);
+  assert.equal(enTablero?.orden?.sinEnviar, 1, 'debe avisar que hay algo sin enviar');
+  assert.equal(enTablero?.orden?.totalCentavos, 19_000);
+  assert.equal(enTablero?.orden?.mesero, 'Luis');
+  assert.equal(enTablero?.orden?.vacia, false);
+
+  ordenes.enviarComanda(orden.id);
+  assert.equal(ordenes.tablero().find((m) => m.id === mesaId)?.orden?.sinEnviar, 0);
+});

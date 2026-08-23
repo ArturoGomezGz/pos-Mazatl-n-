@@ -5,6 +5,7 @@ import {
   comandas,
   cuentaLineas,
   cuentas,
+  zonas,
   lineaModificadores,
   mesas,
   modificadores,
@@ -382,12 +383,28 @@ export function transferirOrden(ordenId: number, mesaDestinoId: number, usuarioI
 
 /** Marca la orden como cobrada cuando ya no queda ninguna cuenta abierta. */
 export function cerrarOrdenSiProcede(tx: Tx, ordenId: number) {
-  const abiertas = tx
-    .select({ n: sql<number>`count(*)` })
+  // Una cuenta abierta sin consumo asignado no es una cuenta pendiente: es basura
+  // que quedó de dividir y volver a juntar. Si la dejáramos viva, la mesa se
+  // quedaría ocupada para siempre sin que nadie pueda cobrar nada.
+  const abiertasSinCobrar = tx
+    .select({ id: cuentas.id })
     .from(cuentas)
     .where(and(eq(cuentas.ordenId, ordenId), eq(cuentas.estado, 'abierta')))
-    .get()?.n ?? 0;
-  if (abiertas > 0) return false;
+    .all();
+
+  const vacias: number[] = [];
+  let conConsumo = 0;
+  for (const cuenta of abiertasSinCobrar) {
+    const n = tx
+      .select({ n: sql<number>`count(*)` })
+      .from(cuentaLineas)
+      .where(eq(cuentaLineas.cuentaId, cuenta.id))
+      .get()?.n ?? 0;
+    if (n === 0) vacias.push(cuenta.id);
+    else conConsumo++;
+  }
+  if (conConsumo > 0) return false;
+  if (vacias.length) tx.delete(cuentas).where(inArray(cuentas.id, vacias)).run();
 
   const orden = tx.select().from(ordenes).where(eq(ordenes.id, ordenId)).get();
   if (!orden) return false;
@@ -395,4 +412,116 @@ export function cerrarOrdenSiProcede(tx: Tx, ordenId: number) {
   tx.update(ordenes).set({ estado: 'cobrada', cerradaEn: sql`(datetime('now'))` }).where(eq(ordenes.id, ordenId)).run();
   tx.update(mesas).set({ estado: 'por_limpiar' }).where(eq(mesas.id, orden.mesaId)).run();
   return true;
+}
+
+
+/* ── Tablero del mesero ──────────────────────────────────────────────── */
+
+/** Lo que el mesero necesita ver al entrar: sus mesas y qué reclama atención.
+ *  Reemplaza al plano como punto de entrada — el mesero se sabe el salón de
+ *  memoria; lo que no puede saber es qué mesa lleva 40 minutos esperando. */
+export function tablero() {
+  const filasMesas = db
+    .select({
+      id: mesas.id,
+      nombre: mesas.nombre,
+      capacidad: mesas.capacidad,
+      estado: mesas.estado,
+      zonaId: mesas.zonaId,
+      zona: zonas.nombre,
+      zonaOrden: zonas.orden,
+    })
+    .from(mesas)
+    .innerJoin(zonas, eq(zonas.id, mesas.zonaId))
+    .where(eq(mesas.activa, true))
+    .orderBy(asc(zonas.orden), asc(mesas.nombre))
+    .all();
+
+  const abiertas = db
+    .select({
+      id: ordenes.id,
+      folio: ordenes.folio,
+      mesaId: ordenes.mesaId,
+      comensales: ordenes.comensales,
+      abiertaEn: ordenes.abiertaEn,
+      meseroId: ordenes.meseroId,
+      mesero: usuarios.nombre,
+    })
+    .from(ordenes)
+    .innerJoin(usuarios, eq(usuarios.id, ordenes.meseroId))
+    .where(eq(ordenes.estado, 'abierta'))
+    .all();
+
+  const lineas = abiertas.length
+    ? db.select().from(ordenLineas).where(inArray(ordenLineas.ordenId, abiertas.map((o) => o.id))).all()
+    : [];
+
+  const cuentasAbiertas = abiertas.length
+    ? db.select().from(cuentas).where(inArray(cuentas.ordenId, abiertas.map((o) => o.id))).all()
+    : [];
+
+  return filasMesas.map((mesa) => {
+    const orden = abiertas.find((o) => o.mesaId === mesa.id);
+    if (!orden) return { ...mesa, orden: null };
+
+    const suyas = lineas.filter((l) => l.ordenId === orden.id && l.estado !== 'cancelada');
+    const totalCentavos = suyas.reduce(
+      (a, l) => a + (l.esCortesia ? 0 : Math.round((l.precioUnitarioCentavos * l.cantidadMilesimas) / 1000)),
+      0,
+    );
+
+    return {
+      ...mesa,
+      orden: {
+        id: orden.id,
+        folio: orden.folio,
+        comensales: orden.comensales,
+        abiertaEn: orden.abiertaEn,
+        meseroId: orden.meseroId,
+        mesero: orden.mesero,
+        totalCentavos,
+        sinEnviar: suyas.filter((l) => l.estado === 'pendiente').length,
+        listas: suyas.filter((l) => l.estado === 'lista').length,
+        cuentasAbiertas: cuentasAbiertas.filter((c) => c.ordenId === orden.id && c.estado === 'abierta').length,
+        // Una orden sin consumo se puede cancelar sin autorización: no hay dinero
+        // de por medio, es una mesa abierta por error.
+        vacia: suyas.length === 0,
+      },
+    };
+  });
+}
+
+/** El mesero avisa que la mesa pidió la cuenta. No cobra: eso es de caja. */
+export function pedirCuenta(ordenId: number, usuarioId: number) {
+  const orden = db.select().from(ordenes).where(eq(ordenes.id, ordenId)).get();
+  if (!orden) throw noEncontrado('Orden');
+  if (orden.estado !== 'abierta') throw conflicto('La orden ya está cerrada');
+
+  db.update(mesas).set({ estado: 'cuenta_pedida' }).where(eq(mesas.id, orden.mesaId)).run();
+  registrar(usuarioId, 'cuenta_pedida', 'orden', ordenId);
+  return obtenerOrden(ordenId);
+}
+
+/** Cancela una mesa abierta por error. Solo si no se capturó nada: en cuanto hay
+ *  consumo, lo que corresponde es cancelar línea por línea con autorización. */
+export function cancelarOrdenVacia(ordenId: number, usuarioId: number) {
+  return db.transaction((tx) => {
+    const orden = tx.select().from(ordenes).where(eq(ordenes.id, ordenId)).get();
+    if (!orden) throw noEncontrado('Orden');
+    if (orden.estado !== 'abierta') throw conflicto('La orden ya está cerrada');
+
+    const conConsumo = tx
+      .select({ n: sql<number>`count(*)` })
+      .from(ordenLineas)
+      .where(and(eq(ordenLineas.ordenId, ordenId), sql`${ordenLineas.estado} <> 'cancelada'`))
+      .get()?.n ?? 0;
+    if (conConsumo > 0) {
+      throw conflicto('Esta mesa ya tiene consumo. Cancela los platillos con autorización antes de cerrarla.');
+    }
+
+    tx.update(ordenes).set({ estado: 'cancelada', cerradaEn: sql`(datetime('now'))` }).where(eq(ordenes.id, ordenId)).run();
+    tx.update(mesas).set({ estado: 'libre' }).where(eq(mesas.id, orden.mesaId)).run();
+    registrar(usuarioId, 'orden_vacia_cancelada', 'orden', ordenId, `mesa ${orden.mesaId}`);
+    return { ok: true };
+  });
 }

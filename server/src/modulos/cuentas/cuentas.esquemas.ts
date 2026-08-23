@@ -17,6 +17,12 @@ export const asignacion = z.object({
   exclusiva: z.boolean().default(true),
 });
 
+/** Repartir un platillo compartido entre varias cuentas: la botana de la mesa. */
+export const reparto = z.object({
+  lineaId: z.number().int().positive(),
+  cuentaIds: z.array(z.number().int().positive()).min(1).max(20),
+});
+
 export const division = z.object({
   partes: z.number().int().min(2).max(20),
 });

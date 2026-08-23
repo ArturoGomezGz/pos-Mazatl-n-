@@ -331,3 +331,73 @@ export const pesos = (centavos: number) =>
 
 export const cantidadLegible = (milesimas: number, unidad: string) =>
   unidad === 'kg' ? `${(milesimas / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')} kg` : String(milesimas / 1000);
+
+/* ── Tablero del mesero ──────────────────────────────────────────────── */
+
+export interface OrdenEnTablero {
+  id: number;
+  folio: number;
+  comensales: number;
+  abiertaEn: string;
+  meseroId: number;
+  mesero: string;
+  totalCentavos: number;
+  sinEnviar: number;
+  listas: number;
+  cuentasAbiertas: number;
+  vacia: boolean;
+}
+
+export interface MesaTablero {
+  id: number;
+  nombre: string;
+  capacidad: number;
+  estado: EstadoMesa;
+  zonaId: number;
+  zona: string;
+  zonaOrden: number;
+  orden: OrdenEnTablero | null;
+}
+
+/** Por qué esta mesa reclama atención. El orden del enum es el orden de urgencia. */
+export type Urgencia = 'listo' | 'sin_enviar' | 'cuenta_pedida' | 'esperando' | 'por_limpiar' | 'libre';
+
+export const ETIQUETAS_URGENCIA: Record<Urgencia, string> = {
+  listo: 'Listo para servir',
+  sin_enviar: 'Falta enviar a cocina',
+  cuenta_pedida: 'Pidieron la cuenta',
+  esperando: 'En servicio',
+  por_limpiar: 'Por limpiar',
+  libre: 'Libre',
+};
+
+export function urgenciaDe(mesa: MesaTablero): Urgencia {
+  if (mesa.orden) {
+    if (mesa.orden.listas > 0) return 'listo';
+    if (mesa.orden.sinEnviar > 0) return 'sin_enviar';
+    if (mesa.estado === 'cuenta_pedida') return 'cuenta_pedida';
+    return 'esperando';
+  }
+  return mesa.estado === 'por_limpiar' ? 'por_limpiar' : 'libre';
+}
+
+const PESO_URGENCIA: Record<Urgencia, number> = {
+  listo: 0, sin_enviar: 1, cuenta_pedida: 2, esperando: 3, por_limpiar: 4, libre: 5,
+};
+
+/** Minutos transcurridos desde una fecha del servidor (formato "YYYY-MM-DD HH:MM:SS" en UTC). */
+export function minutosDesde(fecha: string): number {
+  const ms = Date.now() - new Date(`${fecha.replace(' ', 'T')}Z`).getTime();
+  return Number.isFinite(ms) ? Math.max(0, Math.floor(ms / 60000)) : 0;
+}
+
+/** Ordena por urgencia y, dentro de cada grupo, por tiempo sin atención. */
+export function ordenarPorUrgencia(mesas: MesaTablero[]): MesaTablero[] {
+  return [...mesas].sort((a, b) => {
+    const peso = PESO_URGENCIA[urgenciaDe(a)] - PESO_URGENCIA[urgenciaDe(b)];
+    if (peso !== 0) return peso;
+    const tiempoA = a.orden ? minutosDesde(a.orden.abiertaEn) : 0;
+    const tiempoB = b.orden ? minutosDesde(b.orden.abiertaEn) : 0;
+    return tiempoB - tiempoA;
+  });
+}

@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { db } from '../../db/cliente.js';
 import { cuentaLineas, cuentas, ordenes, pagos } from '../../db/esquema.js';
@@ -11,6 +11,7 @@ import { cerrarOrdenSiProcede, lineasDeOrden, obtenerOrden } from '../ordenes/or
 import type * as E from './cuentas.esquemas.js';
 
 type Asignacion = z.infer<typeof E.asignacion>;
+type Reparto = z.infer<typeof E.reparto>;
 type Descuento = z.infer<typeof E.descuento>;
 type Cobro = z.infer<typeof E.cobro>;
 type Reapertura = z.infer<typeof E.reapertura>;
@@ -150,6 +151,29 @@ export function asignarLinea(datos: Asignacion) {
   });
 }
 
+/** Reparte UN platillo entre varias cuentas: la botana que compartieron. El
+ *  importe se divide en partes exactas entre las cuentas elegidas. */
+export function repartirLinea(datos: Reparto) {
+  return db.transaction((tx) => {
+    const destinos = tx.select().from(cuentas).where(inArray(cuentas.id, datos.cuentaIds)).all();
+    if (destinos.length !== datos.cuentaIds.length) throw noEncontrado('Cuenta');
+    if (destinos.some((c) => c.estado !== 'abierta')) throw conflicto('Alguna de esas cuentas ya fue cobrada');
+
+    const ordenId = destinos[0]!.ordenId;
+    if (destinos.some((c) => c.ordenId !== ordenId)) throw conflicto('Las cuentas deben ser de la misma mesa');
+
+    // Se quita de todas las cuentas de la orden y se reparte solo entre las elegidas.
+    const hermanas = tx.select({ id: cuentas.id }).from(cuentas).where(eq(cuentas.ordenId, ordenId)).all();
+    for (const h of hermanas) {
+      tx.delete(cuentaLineas).where(and(eq(cuentaLineas.cuentaId, h.id), eq(cuentaLineas.lineaId, datos.lineaId))).run();
+    }
+    for (const destino of destinos) {
+      tx.insert(cuentaLineas).values({ cuentaId: destino.id, lineaId: datos.lineaId, proporcionMilesimas: 1000 }).run();
+    }
+    return cuentasDeOrden(ordenId);
+  });
+}
+
 /** División en partes iguales: cada quien paga lo mismo, aunque hayan compartido. */
 export function dividirEnPartesIguales(ordenId: number, partes: number) {
   return db.transaction((tx) => {
@@ -174,9 +198,9 @@ export function dividirEnPartesIguales(ordenId: number, partes: number) {
     for (const cuenta of nuevas) {
       tx.delete(cuentaLineas).where(eq(cuentaLineas.cuentaId, cuenta.id)).run();
       for (const linea of lineas) {
-        tx.insert(cuentaLineas)
-          .values({ cuentaId: cuenta.id, lineaId: linea.id, proporcionMilesimas: Math.round(1000 / partes) })
-          .run();
+        // La proporción es un peso relativo: el mismo peso en todas las cuentas
+        // reparte el importe exacto, sin perder centavos por redondeo.
+        tx.insert(cuentaLineas).values({ cuentaId: cuenta.id, lineaId: linea.id, proporcionMilesimas: 1000 }).run();
       }
     }
     return cuentasDeOrden(ordenId);

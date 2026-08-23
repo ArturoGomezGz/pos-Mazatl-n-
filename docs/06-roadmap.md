@@ -48,6 +48,27 @@ El restaurante ya puede operar un servicio completo sin el sistema anterior.
 **Pendiente de la fase:** impresión en impresora térmica (hoy se imprime por el
 navegador) y respaldo con un botón.
 
+## Fase 1c · El flujo del mesero en el teléfono — **entregado**
+
+Una prueba de usabilidad recorrió los tres escenarios reales (cliente solo, grupo
+que divide, mesas juntas) desde un teléfono. El dinero cuadró al centavo, pero la
+interfaz no era usable en 390 px. Lo corregido:
+
+- **El plano deja de ser el punto de entrada.** El mesero se sabe su salón; en el
+  teléfono el mapa era un obstáculo (tres de siete mesas quedaban fuera de la
+  pantalla y el arrastre abría mesas por error). El editor queda como herramienta
+  de escritorio para el dueño y hay una vista de consulta opcional.
+- **“Mis mesas”**: lista ordenada por urgencia —listo para servir, falta enviar a
+  cocina, pidieron la cuenta, en servicio— con el total y el tiempo de cada mesa,
+  y “+ Abrir mesa” con rejilla de códigos.
+- **Captura y cobro usables en teléfono**: la orden y el cobro son hojas que suben
+  desde abajo, con la acción principal anclada al pulgar.
+- **Una mesa abierta por error se cierra** sin dejar la mesa ocupada para siempre.
+- **Las cuentas vacías ya no cuelgan la mesa**: se descartan al cobrar la última
+  cuenta con consumo.
+- **Dividir salió del camino principal**: un enlace discreto al pie del ticket, con
+  tres opciones en lenguaje de piso, incluida “repartir un platillo compartido”.
+
 ## Fase 2 · Cerrar la operación (2 semanas)
 
 - **Impresión térmica** de comandas, precuenta, ticket y corte (validar antes el modelo).

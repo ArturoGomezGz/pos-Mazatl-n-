@@ -7,10 +7,11 @@ import { Caja } from './paginas/Caja';
 import { Cobro } from './paginas/Cobro';
 import { Cocina } from './paginas/Cocina';
 import { EditorPlano } from './paginas/EditorPlano';
+import { MapaConsulta } from './paginas/MapaConsulta';
+import { MisMesas } from './paginas/MisMesas';
 import { Ingreso } from './paginas/Ingreso';
 import { Reportes } from './paginas/Reportes';
 import { TomaOrden } from './paginas/TomaOrden';
-import { VistaSalon } from './paginas/VistaSalon';
 import { ETIQUETAS_ROL, type Rol } from './tipos';
 
 interface Enlace {
@@ -22,10 +23,11 @@ interface Enlace {
 /** La navegación cambia según el rol: el mesero no necesita ver reportes y la
  *  cocina no necesita ver nada más que su pantalla. */
 const ENLACES: Enlace[] = [
-  { ruta: '/salon', texto: 'Salón', roles: ['admin', 'cajero', 'mesero'] },
+  { ruta: '/mesas', texto: 'Mis mesas', roles: ['admin', 'cajero', 'mesero'] },
   { ruta: '/cocina', texto: 'Cocina', roles: ['admin', 'cajero', 'cocina', 'mesero'] },
   { ruta: '/caja', texto: 'Caja', roles: ['admin', 'cajero'] },
   { ruta: '/menu', texto: 'Menú', roles: ['admin'] },
+  // El editor del plano es trabajo de escritorio: configurar el salón, no atender.
   { ruta: '/comedor', texto: 'Comedor', roles: ['admin'] },
   { ruta: '/reportes', texto: 'Reportes', roles: ['admin', 'cajero'] },
   { ruta: '/equipo', texto: 'Equipo', roles: ['admin'] },
@@ -39,7 +41,7 @@ export function App() {
   if (!usuario) return <Ingreso />;
 
   const enlaces = ENLACES.filter((e) => e.roles.includes(usuario.rol));
-  const inicio = usuario.rol === 'cocina' ? '/cocina' : '/salon';
+  const inicio = usuario.rol === 'cocina' ? '/cocina' : '/mesas';
 
   return (
     <div className="app">
@@ -64,7 +66,9 @@ export function App() {
 
       <Routes>
         <Route path="/" element={<Navigate to={inicio} replace />} />
-        <Route path="/salon" element={<VistaSalon />} />
+        <Route path="/mesas" element={<MisMesas />} />
+        <Route path="/mapa" element={<MapaConsulta />} />
+        <Route path="/salon" element={<Navigate to="/mesas" replace />} />
         <Route path="/orden/:mesaId" element={<TomaOrden />} />
         <Route path="/cobro/:ordenId" element={<Cobro />} />
         <Route path="/cocina" element={<Cocina />} />

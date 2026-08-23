@@ -18,6 +18,7 @@ export function TomaOrden() {
   const [comensales, setComensales] = useState(2);
   const [eligiendo, setEligiendo] = useState<Producto | null>(null);
   const [cancelando, setCancelando] = useState<Linea | null>(null);
+  const [mostrarOrden, setMostrarOrden] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [enviando, setEnviando] = useState(false);
@@ -74,9 +75,24 @@ export function TomaOrden() {
         // La clave hace que un reintento por Wi-Fi malo no duplique la comanda.
         const r = await api.enviarComanda(orden.id, nuevaClave());
         setOrden(r.orden);
+        setMostrarOrden(false);
       } finally {
         setEnviando(false);
       }
+    });
+
+  const pedirCuenta = () =>
+    accion(async () => {
+      if (!orden) return;
+      await api.pedirCuenta(orden.id);
+      navegar('/mesas');
+    });
+
+  const cerrarMesaVacia = () =>
+    accion(async () => {
+      if (!orden) return;
+      await api.cancelarMesaVacia(orden.id);
+      navegar('/mesas');
     });
 
   const alternarDisponibilidad = (producto: Producto) =>
@@ -88,11 +104,7 @@ export function TomaOrden() {
   const cancelarLinea = (datos: { pin: string; motivo: string }) =>
     accion(async () => {
       if (!cancelando) return;
-      await api.cancelarLinea(cancelando.id, {
-        motivo: datos.motivo,
-        pinAutorizacion: datos.pin,
-        esCortesia: false,
-      });
+      await api.cancelarLinea(cancelando.id, { motivo: datos.motivo, pinAutorizacion: datos.pin, esCortesia: false });
       setCancelando(null);
       await cargar();
     });
@@ -112,7 +124,7 @@ export function TomaOrden() {
           </div>
           {error && <div className="aviso">{error}</div>}
           <div className="acciones-dialogo">
-            <button className="btn" onClick={() => navegar('/salon')}>Volver al salón</button>
+            <button className="btn" onClick={() => navegar('/mesas')}>Volver</button>
             <button className="btn primario" onClick={abrirMesa}>Abrir mesa</button>
           </div>
         </div>
@@ -124,20 +136,22 @@ export function TomaOrden() {
   const pendientes = activas.filter((l) => l.estado === 'pendiente');
   const enviadas = activas.filter((l) => l.estado !== 'pendiente');
   const total = activas.reduce((a, l) => a + l.totalCentavos, 0);
+  const puedeCobrar = puede('admin', 'cajero');
 
   return (
-    <div className="contenido">
-      <div className="barra">
-        <button className="btn chico" onClick={() => navegar('/salon')}>◀ Salón</button>
+    <div className="contenido pantalla-orden">
+      <div className="barra compacta">
+        <button className="btn chico" onClick={() => navegar('/mesas')}>◀ Mesas</button>
         <strong>Mesa {orden.mesaNombre}</strong>
-        <span className="tenue">
-          {orden.comensales} personas · {orden.meseroNombre} · folio {orden.folio}
-        </span>
+        <span className="tenue">{orden.comensales}p · {orden.meseroNombre}</span>
         <span className="empuje" />
-        <button className="btn chico" onClick={() => navegar(`/cobro/${orden.id}`)}>Cuenta y cobro</button>
-        <button className="btn primario" disabled={!pendientes.length || enviando} onClick={enviar}>
-          {enviando ? 'Enviando…' : `Enviar a cocina (${pendientes.length})`}
-        </button>
+        {activas.length === 0 ? (
+          <button className="btn chico peligro" onClick={cerrarMesaVacia}>Cerrar mesa</button>
+        ) : puedeCobrar ? (
+          <button className="btn chico" onClick={() => navegar(`/cobro/${orden.id}`)}>Cuenta</button>
+        ) : (
+          <button className="btn chico" onClick={pedirCuenta}>Pedir cuenta</button>
+        )}
       </div>
 
       {error && <div className="aviso">{error}</div>}
@@ -148,13 +162,17 @@ export function TomaOrden() {
             categorias={menu}
             estilo={estilo}
             onElegir={setEligiendo}
-            onAlternarDisponibilidad={puede('admin', 'cajero', 'cocina', 'mesero') ? alternarDisponibilidad : undefined}
+            onAlternarDisponibilidad={alternarDisponibilidad}
           />
         </div>
 
-        <aside className="panel derecho comanda">
-          <h2>Orden</h2>
+        <aside className={`panel derecho comanda${mostrarOrden ? ' hoja-abierta' : ''}`}>
+          <div className="hoja-encabezado">
+            <h2>Orden · {pesos(total)}</h2>
+            <button className="btn chico fantasma solo-movil" onClick={() => setMostrarOrden(false)}>Cerrar</button>
+          </div>
 
+          <div className="hoja-cuerpo">
           {pendientes.length > 0 && (
             <>
               <h3 className="subtitulo">Por enviar</h3>
@@ -179,12 +197,27 @@ export function TomaOrden() {
             <span>Total</span>
             <strong>{pesos(total)}</strong>
           </div>
+          </div>
+
+          <div className="hoja-pie">
+            <button className="btn primario grande" disabled={!pendientes.length || enviando} onClick={enviar}>
+              {enviando ? 'Enviando…' : `Enviar a cocina (${pendientes.length})`}
+            </button>
+          </div>
         </aside>
       </div>
 
-      {eligiendo && (
-        <DialogoProducto producto={eligiendo} onCancelar={() => setEligiendo(null)} onAgregar={agregar} />
-      )}
+      {/* Zona del pulgar: lo que el mesero toca cien veces por turno vive abajo. */}
+      <div className="barra-inferior doble">
+        <button className="btn grande" onClick={() => setMostrarOrden(true)}>
+          Ver orden ({activas.length}) · {pesos(total)}
+        </button>
+        <button className="btn primario grande" disabled={!pendientes.length || enviando} onClick={enviar}>
+          {enviando ? 'Enviando…' : `Enviar (${pendientes.length})`}
+        </button>
+      </div>
+
+      {eligiendo && <DialogoProducto producto={eligiendo} onCancelar={() => setEligiendo(null)} onAgregar={agregar} />}
 
       {cancelando && (
         <PedirAutorizacion
@@ -213,12 +246,8 @@ function FilaLinea({ linea, onQuitar, onCancelar }: { linea: Linea; onQuitar?: (
         </span>
         <span className="linea-importe">{pesos(linea.totalCentavos)}</span>
       </div>
-      {onQuitar && (
-        <button className="btn chico fantasma" onClick={onQuitar}>Quitar</button>
-      )}
-      {onCancelar && (
-        <button className="btn chico fantasma peligro" onClick={onCancelar}>Cancelar</button>
-      )}
+      {onQuitar && <button className="btn chico fantasma" onClick={onQuitar}>Quitar</button>}
+      {onCancelar && <button className="btn chico fantasma peligro" onClick={onCancelar}>Cancelar</button>}
     </div>
   );
 }

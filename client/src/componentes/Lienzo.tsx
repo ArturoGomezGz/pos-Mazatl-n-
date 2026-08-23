@@ -49,21 +49,10 @@ export function Lienzo({
 
   function iniciar(evento: EventoPuntero<HTMLElement>, tipo: Tipo, id: number, geometria: Geometria, modo: Modo) {
     onSeleccionar({ tipo, id });
-    // Se registra siempre, también en modo lectura: es lo que permite distinguir
-    // un toque (abrir la mesa) de un arrastre (moverla).
-    arrastre.current = {
-      tipo,
-      id,
-      modo,
-      clienteX: evento.clientX,
-      clienteY: evento.clientY,
-      inicial: geometria,
-      movido: false,
-    };
-    if (!editable) return;
     evento.preventDefault();
     evento.stopPropagation();
     evento.currentTarget.setPointerCapture(evento.pointerId);
+    arrastre.current = { tipo, id, modo, clienteX: evento.clientX, clienteY: evento.clientY, inicial: geometria, movido: false };
   }
 
   function mover(evento: EventoPuntero<HTMLElement>) {
@@ -93,21 +82,18 @@ export function Lienzo({
   }
 
   function terminar(evento: EventoPuntero<HTMLElement>) {
-    const actual = arrastre.current;
     arrastre.current = null;
     if (evento.currentTarget.hasPointerCapture?.(evento.pointerId)) {
       evento.currentTarget.releasePointerCapture(evento.pointerId);
     }
-    // Un toque sin desplazamiento sobre una mesa es "abrir la mesa", no moverla.
-    if (actual && !actual.movido && actual.tipo === 'mesa' && onAbrirMesa) {
-      const mesa = zona.mesas.find((m) => m.id === actual.id);
-      if (mesa) onAbrirMesa(mesa);
-    }
   }
 
+  // En modo lectura no interceptamos el puntero: el navegador necesita el gesto
+  // para desplazar el plano, y un `click` distingue toque de arrastre sin ayuda.
+  // Interceptarlo era lo que hacía que arrastrar abriera una mesa por error.
   const manejadores = editable
-    ? { onPointerMove: mover, onPointerUp: terminar, onPointerCancel: terminar }
-    : { onPointerUp: terminar };
+    ? { onPointerDown: undefined, onPointerMove: mover, onPointerUp: terminar, onPointerCancel: terminar }
+    : {};
 
   return (
     <div className="lienzo-contenedor" onPointerDown={() => onSeleccionar(null)}>
@@ -141,6 +127,7 @@ export function Lienzo({
             mostrarEstado={mostrarEstados}
             seleccionada={seleccion?.tipo === 'mesa' && seleccion.id === mesa.id}
             onIniciar={iniciar}
+            onAbrir={onAbrirMesa}
             manejadores={manejadores}
           />
         ))}
@@ -158,6 +145,7 @@ function FiguraMesa({
   mostrarEstado,
   seleccionada,
   onIniciar,
+  onAbrir,
   manejadores,
 }: {
   mesa: Mesa;
@@ -165,6 +153,7 @@ function FiguraMesa({
   mostrarEstado: boolean;
   seleccionada: boolean;
   onIniciar: Iniciar;
+  onAbrir?: (mesa: Mesa) => void;
   manejadores: Manejadores;
 }) {
   const clases = [
@@ -172,7 +161,7 @@ function FiguraMesa({
     `forma-${mesa.forma}`,
     mesa.forma === 'redonda' ? 'redonda' : '',
     mesa.forma === 'barra' ? 'barra' : '',
-    editable ? 'editable' : '',
+    editable ? 'editable' : 'consulta',
     seleccionada ? 'seleccionada' : '',
     mesa.activa ? '' : 'inactiva',
     mostrarEstado ? `estado-${mesa.estado}` : '',
@@ -190,7 +179,9 @@ function FiguraMesa({
         height: mesa.alto,
         transform: mesa.rotacion ? `rotate(${mesa.rotacion}deg)` : undefined,
       }}
-      onPointerDown={(e) => onIniciar(e, 'mesa', mesa.id, geometriaDe(mesa), 'mover')}
+      {...(editable
+        ? { onPointerDown: (e: EventoPuntero<HTMLElement>) => onIniciar(e, 'mesa', mesa.id, geometriaDe(mesa), 'mover') }
+        : { onClick: () => onAbrir?.(mesa), role: 'button', tabIndex: 0 })}
       {...manejadores}
     >
       <span className="nombre">{mesa.nombre}</span>
@@ -222,7 +213,7 @@ function FiguraElemento({
 }) {
   return (
     <div
-      className={`elemento tipo-${elemento.tipo}${editable ? ' editable' : ''}${seleccionado ? ' seleccionado' : ''}`}
+      className={`elemento tipo-${elemento.tipo}${editable ? ' editable' : ' consulta'}${seleccionado ? ' seleccionado' : ''}`}
       style={{
         left: elemento.x,
         top: elemento.y,
@@ -230,7 +221,9 @@ function FiguraElemento({
         height: elemento.alto,
         transform: elemento.rotacion ? `rotate(${elemento.rotacion}deg)` : undefined,
       }}
-      onPointerDown={(e) => onIniciar(e, 'elemento', elemento.id, geometriaDe(elemento), 'mover')}
+      {...(editable
+        ? { onPointerDown: (e: EventoPuntero<HTMLElement>) => onIniciar(e, 'elemento', elemento.id, geometriaDe(elemento), 'mover') }
+        : {})}
       {...manejadores}
     >
       {elemento.etiqueta}

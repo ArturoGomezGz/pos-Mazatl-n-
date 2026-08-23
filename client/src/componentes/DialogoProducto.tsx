@@ -157,6 +157,13 @@ export function DialogoProducto({ producto, onCancelar, onAgregar }: Props) {
         />
       </div>
 
+      {/* Decir por qué está bloqueado el botón, en vez de dejarlo gris sin explicación. */}
+      {faltantes.length > 0 && (
+        <p className="aviso-suave">Falta elegir: {faltantes.map((g) => g.nombre).join(', ')}</p>
+      )}
+      {esAbierto && precioBase <= 0 && <p className="aviso-suave">Captura el precio del día.</p>}
+      {esPeso && cantidadMilesimas <= 0 && <p className="aviso-suave">Captura el peso en gramos.</p>}
+
       <div className="acciones-dialogo">
         <span className="total-dialogo">{pesos(total)}</span>
         <button className="btn" onClick={onCancelar}>Cancelar</button>

@@ -306,6 +306,12 @@ export function EditorPlano() {
 
   return (
     <div className="contenido">
+      {/* Diseñar el comedor es trabajo de escritorio: se hace una vez, con calma
+          y con ratón. En el servicio diario el mesero no pasa por aquí. */}
+      <div className="aviso info editor-solo-escritorio">
+        El editor del comedor está pensado para computadora. En un teléfono usa
+        los campos de posición del panel derecho.
+      </div>
       <div className="barra">
         <label>
           Distribución

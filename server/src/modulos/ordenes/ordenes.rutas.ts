@@ -16,6 +16,9 @@ rutasOrdenes.get('/por-mesa/:mesaId', (req, res) => {
   res.json(orden ? ordenes.obtenerOrden(orden.id) : null);
 });
 
+/** Punto de entrada del mesero: qué mesas hay y cuáles reclaman atención. */
+rutasOrdenes.get('/tablero', (_req, res) => res.json(ordenes.tablero()));
+
 rutasOrdenes.post('/', (req, res) => {
   const orden = ordenes.abrirOrden(validar(E.ordenNueva, req.body), usuarioActual(req).id);
   res.status(201).json(ordenes.obtenerOrden(orden.id));
@@ -46,6 +49,14 @@ rutasOrdenes.post('/:id/enviar', (req, res) => {
   const { claveIdempotencia } = validar(E.envioComanda, req.body ?? {});
   const resultado = ordenes.enviarComanda(idDeRuta(req.params.id), claveIdempotencia);
   res.json({ ...resultado, orden: ordenes.obtenerOrden(idDeRuta(req.params.id)) });
+});
+
+rutasOrdenes.post('/:id/pedir-cuenta', (req, res) => {
+  res.json(ordenes.pedirCuenta(idDeRuta(req.params.id), usuarioActual(req).id));
+});
+
+rutasOrdenes.post('/:id/cancelar-vacia', (req, res) => {
+  res.json(ordenes.cancelarOrdenVacia(idDeRuta(req.params.id), usuarioActual(req).id));
 });
 
 rutasOrdenes.post('/:id/transferir', (req, res) => {

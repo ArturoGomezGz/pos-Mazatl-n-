@@ -8,6 +8,7 @@ import type {
   GrupoModificador,
   Layout,
   Mesa,
+  MesaTablero,
   MetodoPago,
   Orden,
   Plano,
@@ -161,6 +162,10 @@ export const api = {
   eliminarModificador: (id: number) => peticion<unknown>(`/menu/modificadores/${id}`, { method: 'DELETE' }),
 
   /* ── Órdenes ────────────────────────────────────────────────────── */
+  tablero: () => peticion<MesaTablero[]>('/ordenes/tablero'),
+  pedirCuenta: (ordenId: number) => peticion<Orden>(`/ordenes/${ordenId}/pedir-cuenta`, { method: 'POST' }),
+  cancelarMesaVacia: (ordenId: number) =>
+    peticion<{ ok: true }>(`/ordenes/${ordenId}/cancelar-vacia`, { method: 'POST' }),
   ordenDeMesa: (mesaId: number) => peticion<Orden | null>(`/ordenes/por-mesa/${mesaId}`),
   orden: (id: number) => peticion<Orden>(`/ordenes/${id}`),
   abrirOrden: (mesaId: number, comensales: number) =>
@@ -192,6 +197,8 @@ export const api = {
   crearCuenta: (ordenId: number, nombre?: string) =>
     peticion<Cuenta>(`/cuentas/orden/${ordenId}`, { method: 'POST', ...json({ nombre }) }),
   eliminarCuenta: (id: number) => peticion<unknown>(`/cuentas/${id}`, { method: 'DELETE' }),
+  repartirLinea: (lineaId: number, cuentaIds: number[]) =>
+    peticion<Cuenta[]>('/cuentas/repartir', { method: 'POST', ...json({ lineaId, cuentaIds }) }),
   asignarLinea: (cuentaId: number, lineaId: number, proporcionMilesimas = 1000) =>
     peticion<Cuenta[]>('/cuentas/asignar', { method: 'POST', ...json({ cuentaId, lineaId, proporcionMilesimas, exclusiva: true }) }),
   dividirEnPartes: (ordenId: number, partes: number) =>
