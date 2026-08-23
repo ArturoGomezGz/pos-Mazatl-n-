@@ -131,8 +131,8 @@ dedo en una tablet, no solo con mouse.
 
 | ID | Requerimiento | Criterio verificable |
 |---|---|---|
-| RNF-1 **Legacy web** | Aplicación web renderizada en servidor, multi-página, sin dependencia de frameworks pesados ni de un build complejo | Funciona con JavaScript limitado; cada acción crítica tiene equivalente en formulario HTML |
-| RNF-2 **Compatibilidad** | Debe correr en navegadores de tablets Android económicas y PCs viejas | Chrome/WebView 80+, sin APIs modernas obligatorias |
+| RNF-1 **Web moderna** | Aplicación web con API REST en Node/Express y cliente React; sin instalación en las terminales | Se opera completa desde el navegador de una tablet, sin app nativa |
+| RNF-2 **Compatibilidad** | Debe correr en tablets Android económicas y PCs modestas del local | Chrome/WebView de los últimos 3 años; interacción por Pointer Events (dedo, ratón o lápiz) |
 | RNF-3 **Operación sin internet** | El servicio corre en la red local del restaurante | Se puede vender con el módem desconectado |
 | RNF-4 **Rendimiento** | Respuesta percibida < 1 s en acciones de piso | Medido en la tablet más lenta del local, con 30 mesas y 5000 productos-línea |
 | RNF-5 **Usabilidad táctil** | Botones ≥ 48×48 px, alto contraste, legible bajo sol | Prueba con el personal real |

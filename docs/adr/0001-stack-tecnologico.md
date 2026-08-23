@@ -1,71 +1,82 @@
 # ADR-0001 · Stack tecnológico
 
-- **Estado:** propuesto — pendiente de confirmación del equipo
-- **Fecha:** 2026-08-22
+- **Estado:** aceptado
+- **Fecha:** 2026-08-23
 
 ## Contexto
 
-El sistema debe cumplir RNF-1 (web clásica renderizada en servidor), RNF-2 (navegadores
-y hardware viejos), RNF-3 (operar sin internet, servidor en el local), RNF-8
-(instalación por alguien no técnico) y RNF-11 (mantenible por un solo desarrollador).
+El sistema debe operar sin internet con el servidor en el propio local (RNF-3), correr
+en tablets económicas (RNF-2), instalarse sin personal técnico (RNF-8) y ser mantenible
+por un solo desarrollador (RNF-11). El presupuesto es bajo.
 
-El presupuesto es bajo y no habrá soporte técnico presencial. El costo dominante del
-proyecto no es escribir el código: es **mantenerlo vivo durante años en un mini-PC bajo
-la barra de un restaurante**.
+Una nota sobre el arranque del proyecto: la conversación inicial mencionó "legacy web" y
+el primer boceto se diseñó como aplicación clásica renderizada en servidor. Fue un
+malentendido: la decisión del equipo es **web moderna**. Este ADR refleja la decisión
+real y reemplaza aquel enfoque.
 
-## Opciones consideradas
+## Decisión
 
-### A. PHP 8 + MariaDB (recomendada)
+**Node.js 22 + Express 5 + TypeScript** en el servidor, **React 19 + Vite 8** en el
+cliente, **SQLite con Drizzle ORM** como base de datos y **Zod 4** para validar toda
+entrada.
+
+### Por qué Express
+
+Elegido por el equipo. Es un framework mínimo y estable, con el ecosistema más grande de
+Node: lo que se necesita para un API REST de este tamaño. Frente a alternativas más
+opinadas (NestJS, Fastify) gana en simplicidad y en cantidad de gente que puede
+mantenerlo si el cliente cambia de proveedor.
+
+### Por qué React en el cliente
+
+El editor de plano es interfaz con estado real: selección, arrastre, cambios pendientes,
+deshacer. Renderizar eso en el servidor sería pelearse con la herramienta. React resuelve
+exactamente este problema y Vite da un entorno de desarrollo inmediato.
+
+### Por qué SQLite y no PostgreSQL
 
 | A favor | En contra |
 |---|---|
-| Modelo de ejecución por petición: encaja exactamente con la arquitectura multi-página | Lenguaje con mala fama heredada de versiones viejas |
-| Sin proceso residente que se caiga y haya que reiniciar | Requiere disciplina para no escribir SQL suelto en las vistas |
-| Instalación trivial en Windows o Linux; hosting compartido de $3 USD si algún día se mueve fuera | |
-| Enorme cantidad de desarrolladores disponibles en México si el cliente cambia de proveedor | |
-| Vida útil demostrada: código PHP de hace 15 años sigue corriendo | |
+| La base es **un archivo**: respaldar es copiarlo; restaurar es pegarlo | Escrituras serializadas (irrelevante con 30 mesas y 5 terminales) |
+| Sin servicio extra que instalar, monitorear ni reiniciar en el mini-PC | Menos herramientas de análisis que Postgres |
+| Con `WAL` + `synchronous = FULL` da durabilidad real ante corte de luz | |
+| Un restaurante pequeño genera decenas de miles de renglones al año, no millones | |
 
-### B. Python + Flask + SQLite/PostgreSQL
+**Es una decisión reversible.** Drizzle habla también con PostgreSQL; si algún día hay
+segunda sucursal o reportes pesados, se migra el dialecto sin reescribir la aplicación.
 
-| A favor | En contra |
-|---|---|
-| Lenguaje agradable, buenas plantillas (Jinja) | Necesita un proceso residente y un supervisor que lo levante |
-| Bueno si después se quieren reportes o análisis de datos | Entornos virtuales y dependencias: más piezas que se rompen sin soporte técnico |
+### Por qué Drizzle y no Prisma
 
-### C. Node.js + Express + plantillas
+Drizzle es una capa fina sobre SQL: sin proceso de generación de cliente, sin motor
+binario aparte, y las consultas se leen como las consultas que son. Para un sistema que
+debe seguir compilando dentro de cinco años en un mini-PC, menos maquinaria es mejor.
 
-| A favor | En contra |
-|---|---|
-| Un solo lenguaje en todo el proyecto | El ecosistema envejece rápido: dependencias que en 3 años ya no instalan |
-| | Proceso residente, igual que B |
+### Por qué migraciones SQL propias
 
-## Decisión propuesta
+Se descartó `drizzle-kit` (además, arrastraba dependencias con vulnerabilidades conocidas
+en el momento de instalar). El migrador propio son 30 líneas: aplica en orden los
+archivos `.sql` pendientes y los registra. El SQL queda legible y revisable para siempre,
+y se ejecuta solo al arrancar el servidor porque en el restaurante nadie va a correr
+comandos de mantenimiento.
 
-**Opción A: PHP 8.3 + MariaDB**, con plantillas propias, SQL explícito y migraciones
-versionadas. Sin framework pesado; a lo sumo un enrutador mínimo.
+### Por qué CSS propio y no un framework de UI
 
-El criterio decisivo no es la elegancia del lenguaje sino **la probabilidad de que el
-sistema siga funcionando dentro de cinco años sin nosotros**. Ahí PHP gana claramente
-para este contexto: sin proceso residente, sin entorno virtual, sin cadena de build,
-y con la mayor disponibilidad de relevo técnico en el mercado local.
-
-**SQLite vs MariaDB:** SQLite basta técnicamente para 30 mesas y sería aún más simple de
-respaldar (un archivo). Se propone MariaDB solo por concurrencia de escritura con varias
-tablets simultáneas y por herramientas de respaldo conocidas. **Es una decisión
-reversible** y se puede cambiar a SQLite si se prefiere máxima simplicidad.
+Las reglas de este producto son específicas: 48 px mínimos de área táctil, alto contraste
+para sol directo, colores de estado que se aprenden en un turno. Un framework genérico
+habría que pelearlo más de lo que ayuda. El sistema de diseño cabe en un archivo con
+variables CSS.
 
 ## Consecuencias
 
-- El servidor del local necesita PHP y MariaDB: se resuelve con un instalador único
-  (XAMPP en Windows, o paquetes del sistema en Linux).
-- No habrá recarga en vivo ni herramientas modernas de desarrollo: se compensa con
-  pruebas automatizadas del dominio.
-- Si más adelante se requiere tiempo real fuerte (pantalla de cocina con muchas
-  estaciones), habrá que agregar un componente aparte. No aplica hoy.
+- El servidor del local necesita **solo Node.js**. Instalación: copiar la carpeta,
+  `npm ci`, `npm run build`, arrancar como servicio.
+- En producción, un único proceso Node sirve el API y los archivos compilados del cliente.
+- Respaldo = copiar `data/pos.sqlite` (y su `-wal`). Simple de automatizar y de explicar.
+- Si el negocio crece a varias sucursales, el cambio a PostgreSQL es un cambio de
+  dialecto, no una reescritura.
 
-## Pendiente de confirmar
+## Pendientes que este ADR no resuelve
 
-1. ¿Se confirma la interpretación de "legacy web" del documento de arquitectura?
-2. ¿Hay preferencia o experiencia previa del equipo con algún lenguaje?
-3. ¿El servidor del local será Windows o Linux?
-4. ¿MariaDB o SQLite?
+1. ¿El servidor del local será Windows o Linux? (afecta al instalador, no al código)
+2. Modelo exacto de impresora térmica: define la biblioteca de impresión.
+3. ¿Cómo se publica el sistema en la red local? (`pos.local` por mDNS o IP fija)

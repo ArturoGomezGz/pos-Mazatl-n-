@@ -1,0 +1,26 @@
+{
+  "name": "pos-mazatlan",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Sistema de punto de venta para Mariscos Mazatlán",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev --workspace server",
+    "dev:web": "npm run dev --workspace client",
+    "build": "npm run build --workspace server && npm run build --workspace client",
+    "check": "npm run check --workspace server && npm run check --workspace client",
+    "db:migrate": "npm run db:migrate --workspace server",
+    "db:seed": "npm run db:seed --workspace server",
+    "test": "npm run test --workspace server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

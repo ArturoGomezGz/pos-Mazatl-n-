@@ -4,14 +4,19 @@
 *.local
 
 # Dependencias
-/vendor/
-/node_modules/
+node_modules/
 
 # Datos y respaldos locales
-/data/*.sqlite
-/data/*.db
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 /backups/
 *.sql.gz
+
+# Compilados
+dist/
+*.tsbuildinfo
 
 # Logs y temporales
 *.log

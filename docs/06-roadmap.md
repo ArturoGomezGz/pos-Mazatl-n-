@@ -5,25 +5,36 @@ real**. No entregamos mitades que obliguen a seguir con el sistema viejo.
 
 ---
 
-## Fase 0 · Cimientos (1 semana)
+## Fase 0 · Cimientos — **entregado**
 
-- Esqueleto de la aplicación, enrutador, sesión y roles.
-- Migraciones SQL versionadas.
-- Ingreso por PIN.
-- Configuración del negocio y respaldo con un botón.
-- Hoja de estilos base con las tres pieles (piso, caja, administración).
+- ✅ Monorepo, API Express con manejo central de errores y validación con Zod.
+- ✅ Base SQLite con migraciones SQL versionadas que se aplican al arrancar.
+- ✅ Sistema de estilos base (táctil, alto contraste).
+- ✅ Pruebas automatizadas de la capa de servicio.
+- ⏳ Ingreso por PIN, configuración del negocio y respaldo con un botón.
 
-**Entregable:** se puede entrar al sistema y configurar los datos del negocio.
+## Fase 1a · Editor del comedor — **entregado**
+
+El módulo que motivó el proyecto, funcionando de punta a punta:
+
+- ✅ Zonas, mesas (nombre, capacidad, forma) y referencias visuales.
+- ✅ Arrastrar y redimensionar con dedo o ratón, ajuste a cuadrícula y zoom.
+- ✅ Edición numérica precisa como respaldo del arrastre.
+- ✅ Distribuciones múltiples, copiando una existente.
+- ✅ Guardado por lote transaccional con aviso de cambios pendientes.
+- ✅ Vista de salón con estados por color y refresco automático.
+
+**Pendiente para cerrar el módulo:** unión de mesas (RF-1.7) y reservaciones (RF-1.10,
+prevista para Fase 3).
 
 ---
 
-## Fase 1 · MVP vendible (3–4 semanas)
+## Fase 1b · MVP vendible (3–4 semanas)
 
 Lo mínimo para que el restaurante **deje de usar lo que usa hoy**.
 
 | Módulo | Alcance |
 |---|---|
-| Comedor | Zonas, mesas, editor de plano con arrastre, estados por color |
 | Menú | Categorías, productos, variantes de precio, marcar agotado |
 | Órdenes | Abrir mesa, capturar, enviar comanda, cancelar con autorización |
 | Cuentas | Precuenta, cobro efectivo/tarjeta/transferencia, ticket impreso |

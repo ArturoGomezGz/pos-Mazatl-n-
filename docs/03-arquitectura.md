@@ -1,46 +1,38 @@
 # 03 · Arquitectura
 
-## 0. Qué entendemos por "legacy web"
+## 1. Stack
 
-Este documento asume la siguiente interpretación, y sobre ella está construido todo el
-diseño. **Si tu idea de "legacy web" es otra, este es el punto a corregir antes de
-escribir código** (ver `adr/0001-stack-tecnologico.md`).
+Aplicación web moderna, dividida en dos piezas que se despliegan juntas en el propio
+restaurante.
 
-> **Legacy web** = aplicación web clásica: **renderizada en el servidor**,
-> **multi-página** (navegación por enlaces y formularios HTML), sin SPA, sin estado
-> complejo en el cliente, y capaz de correr en navegadores viejos y hardware modesto.
-> El JavaScript es **mejora progresiva**, no requisito.
+| Capa | Tecnología | Por qué |
+|---|---|---|
+| **API** | Node.js 22 + **Express 5** + TypeScript | Framework mínimo y estable; TypeScript da seguridad sin ceremonia |
+| **Base de datos** | **SQLite** (better-sqlite3) con **Drizzle ORM** | Un archivo = respaldo trivial. Sobra para 30 mesas. Drizzle da tipos sin generar código pesado |
+| **Migraciones** | SQL versionado + migrador propio (30 líneas) | Cualquiera puede leer el SQL en 5 años; se aplican solas al arrancar |
+| **Validación** | **Zod 4** | El servidor nunca confía en lo que manda el navegador |
+| **Cliente** | **React 19** + **Vite 8** + TypeScript + React Router 7 | El editor de plano es una interfaz con estado real; React es la herramienta correcta |
+| **Estilos** | CSS propio con variables | El POS tiene reglas de diseño concretas (táctil, alto contraste); un framework de UI genérico estorbaría |
+| **Pruebas** | `node:test` sobre la capa de servicio | Las reglas de negocio se prueban sin navegador ni servidor |
 
-### Por qué encaja tan bien con este cliente
+**Decisión de tamaño:** un monorepo con dos workspaces npm (`server/`, `client/`).
+Sin herramientas de monorepo: `npm run dev` levanta ambos.
 
-| Necesidad del restaurante | Lo que aporta el enfoque clásico |
-|---|---|
-| Tablets baratas y viejas | El trabajo pesado lo hace el servidor; el navegador solo pinta HTML |
-| Sin personal técnico | Un solo proceso y una sola base de datos que respaldar |
-| Presupuesto bajo | Cero licencias, hosting local o servidor de $50 USD |
-| Vida larga del sistema | HTML + formularios no se rompen cuando cambia la moda del frontend |
-| Depuración simple | Ver el HTML es ver el estado; no hay que reproducir un estado de cliente |
-
-### La excepción justificada
-
-El **editor de plano del comedor** (RF-1.3) sí necesita JavaScript real: arrastrar
-mesas sobre una cuadrícula. Se resuelve con JS propio, sin framework, y con un
-**modo alterno por formulario** (capturar coordenadas y tamaño en campos numéricos)
-para que la funcionalidad nunca quede bloqueada si el JS falla en un dispositivo viejo.
+Detalle y alternativas descartadas en [`adr/0001-stack-tecnologico.md`](adr/0001-stack-tecnologico.md).
 
 ---
 
-## 1. Topología de despliegue
+## 2. Topología de despliegue
 
 ```mermaid
 flowchart TB
     subgraph LOCAL["Restaurante — red local (sin internet obligatorio)"]
-        SRV["Servidor del local<br/>Mini-PC / laptop dedicada<br/>App + Base de datos"]
+        SRV["Servidor del local<br/>Mini-PC / laptop dedicada<br/>API Node + SQLite + archivos del cliente"]
         RTR["Router Wi-Fi"]
         T1["Tablet mesero 1"]
         T2["Tablet mesero 2"]
         CAJA["PC de caja<br/>+ impresora de tickets"]
-        COC["Pantalla de cocina<br/>o impresora de comandas"]
+        COC["Pantalla de cocina"]
         RTR --- SRV
         RTR --- T1
         RTR --- T2
@@ -50,124 +42,155 @@ flowchart TB
     SRV -. "respaldo cifrado cuando hay internet" .-> NUBE["Almacenamiento remoto"]
 ```
 
-**Decisiones clave de despliegue**
+**Decisiones clave**
 
 1. **El servidor vive en el local.** Si se cae el internet, el restaurante sigue
-   vendiendo. Esto no es negociable en un negocio de piso (RNF-3).
-2. **Cero instalación en las tablets.** Solo abren el navegador en una dirección local
-   (`http://pos.local` o una IP fija). Cambiar de tablet no cuesta nada.
-3. **El respaldo sale del local** en cuanto hay internet. El riesgo real de un mini-PC
-   bajo la barra de un restaurante de mariscos es el agua y el robo, no el hackeo.
-4. **UPS (no-break) obligatorio** para el servidor y el router. Cuesta poco y protege
-   la operación completa.
+   vendiendo. No es negociable en un negocio de piso (RNF-3).
+2. **Cero instalación en las tablets.** Abren el navegador en `http://pos.local`.
+   Cambiar de tablet no cuesta nada.
+3. **En producción, un solo proceso.** Node sirve el API y también los archivos
+   estáticos que Vite compiló. Una cosa que arrancar, una cosa que reiniciar.
+4. **UPS (no-break) obligatorio** para servidor y router.
+5. **El respaldo sale del local** en cuanto hay internet. El riesgo real de un mini-PC
+   bajo la barra de un restaurante de mariscos es el agua y el robo.
 
 ---
 
-## 2. Arquitectura de la aplicación
+## 3. Estructura del código
 
-Capas simples, sin ceremonia. Cada petición entra, se resuelve, se responde HTML.
+```
+server/
+  migraciones/          SQL numerado, se aplica solo al arrancar
+  src/
+    config.ts           Configuración con valores por defecto que ya funcionan
+    app.ts              Ensamblado de Express
+    db/
+      esquema.ts        Tablas tipadas (Drizzle)
+      cliente.ts        Conexión SQLite + pragmas de durabilidad
+      migrar.ts         Migrador propio
+      semilla.ts        Comedor de ejemplo para desarrollo
+    http/
+      errores.ts        ErrorHttp + manejador central
+      validar.ts        Puente con Zod
+    modulos/
+      salon/            zonas, mesas, distribuciones, plano
+        salon.esquemas.ts   Contratos de entrada (Zod)
+        salon.servicio.ts   Reglas de negocio  ← aquí vive la verdad
+        salon.rutas.ts      HTTP delgado
+        salon.prueba.ts     Pruebas del servicio
+
+client/
+  src/
+    api/cliente.ts      Único punto que habla con el API
+    componentes/
+      Lienzo.tsx           Plano interactivo (arrastrar, redimensionar, tocar)
+      PanelPropiedades.tsx Edición fina de lo seleccionado
+    paginas/
+      EditorPlano.tsx      Editor del comedor (administrador)
+      VistaSalon.tsx       Vista de piso (mesero)
+    hooks/usePlano.ts   Carga del plano
+    tipos.ts            Tipos compartidos con el API
+```
+
+**Regla de módulos:** cada módulo del negocio (`salon`, y después `menu`, `ordenes`,
+`cuentas`, `caja`) tiene los mismos cuatro archivos. Un desarrollador que entienda uno,
+entiende todos.
+
+**Regla de capas:** las rutas no deciden nada. Validan, llaman al servicio y responden.
+Toda la lógica —y por tanto todo lo que se prueba— vive en el servicio.
+
+---
+
+## 4. El módulo de salón
 
 ```mermaid
 flowchart LR
-    NAV["Navegador<br/>HTML + CSS + JS mínimo"]
-    subgraph APP["Aplicación (servidor)"]
-        direction TB
-        RUT["Enrutador<br/>+ sesión y permisos"]
-        CTRL["Controladores<br/>(un caso de uso por acción)"]
-        DOM["Dominio<br/>reglas de negocio: orden, cuenta, corte"]
-        REPO["Repositorios<br/>acceso a datos"]
-        VIS["Plantillas HTML"]
-        IMP["Servicio de impresión<br/>comandas y tickets"]
-    end
-    DB[("Base de datos<br/>relacional")]
-    PRN["Impresoras térmicas"]
-
-    NAV -->|"GET / POST"| RUT --> CTRL --> DOM --> REPO --> DB
-    CTRL --> VIS -->|"HTML"| NAV
-    DOM --> IMP --> PRN
+    ZONA["Zona<br/>Terraza · Salón · Palapa"] --> MESA["Mesa<br/>nombre, capacidad, forma"]
+    LAY["Distribución<br/>Normal · Temporada alta"] --> POS["Posición<br/>x, y, ancho, alto, rotación"]
+    MESA --> POS
+    ZONA --> ELE["Elemento<br/>barra, cocina, baño, muro"]
+    LAY --> ELE
 ```
 
-**Reglas de la arquitectura**
+La idea que sostiene el módulo: **la mesa y su posición son cosas distintas**. La mesa
+tiene identidad e historial de ventas; su posición depende de la distribución vigente.
+Así el dueño puede tener el comedor "Normal" y el de "Temporada alta" sin duplicar
+mesas ni perder el historial de ninguna.
 
-- **Un caso de uso = un controlador delgado.** Nada de controladores de 800 líneas.
-- **Las reglas de negocio viven en el dominio, no en las plantillas.** El cálculo de la
-  cuenta, la validación de un cierre de caja y la autorización de una cancelación se
-  prueban sin navegador.
-- **POST + redirect después de toda acción que cambia datos.** Evita el doble cobro por
-  refrescar la página. Crítico en caja.
-- **Idempotencia en operaciones de dinero.** Cada envío de comanda y cada cobro lleva
-  un identificador único generado en la pantalla; si llega dos veces, se aplica una vez.
-  Es la protección real contra el Wi-Fi intermitente de un restaurante.
-- **Sin estado en el cliente.** El estado de la mesa vive en la base de datos, no en la
-  tablet. Si la tablet se muere, otro mesero abre la misma mesa desde otra y sigue.
+### Contrato HTTP
 
----
-
-## 3. Módulos
-
-| Módulo | Responsabilidad | Depende de |
+| Método | Ruta | Qué hace |
 |---|---|---|
-| `auth` | Ingreso por PIN, sesión, roles, autorizaciones puntuales | — |
-| `salon` | Zonas, mesas, plano, estados, unión de mesas | `auth` |
-| `menu` | Categorías, productos, variantes, modificadores, disponibilidad | `auth` |
-| `ordenes` | Orden, líneas, comandas, cancelaciones | `salon`, `menu` |
-| `cuentas` | Cuenta, división, descuentos, propinas, cobro | `ordenes` |
-| `caja` | Turnos, movimientos de efectivo, cortes X/Z | `cuentas` |
-| `reportes` | Consultas agregadas de venta | `cuentas`, `caja` |
-| `impresion` | Formato y envío a impresoras térmicas | `ordenes`, `cuentas` |
-| `config` | Datos del negocio, impuestos, impresoras, respaldos | `auth` |
-| `bitacora` | Registro inmutable de acciones sensibles | todos |
+| `GET` | `/api/salon/plano?layout=1` | Todo el comedor en una sola petición |
+| `GET/POST/PATCH/DELETE` | `/api/salon/layouts` | Distribuciones (crear copia una existente) |
+| `POST/PATCH/DELETE` | `/api/salon/zonas` | Zonas |
+| `POST/PATCH/DELETE` | `/api/salon/mesas` | Mesas (atributos y posición) |
+| `POST/PATCH/DELETE` | `/api/salon/elementos` | Referencias visuales |
+| `PUT` | `/api/salon/posiciones` | **Guardado por lote** de todo lo que se movió |
+
+`PUT /posiciones` existe porque el editor mueve muchas cosas antes de guardar: mandar
+una petición por mesa sería lento y dejaría el comedor a medio guardar si algo falla.
+Va en una transacción: queda todo o no queda nada.
 
 ---
 
-## 4. Estrategia de frontend
+## 5. Decisiones que sostienen la operación
 
-- **HTML semántico + CSS propio.** Sin framework de UI. Una hoja de estilos con
-  variables de color y tamaños grandes para uso táctil.
-- **Tres "pieles" según el rol**, porque los contextos de uso son distintos:
-  - **Piso (mesero):** táctil, botones enormes, pocas opciones por pantalla.
-  - **Caja:** densidad media, atajos de teclado, teclado numérico grande.
-  - **Administración:** tablas y formularios normales, uso con mouse.
-- **JS solo donde paga su costo:** editor de plano, teclado numérico de cobro,
-  autoactualización de la pantalla de cocina.
-- **Actualización de pantallas vivas** (plano del comedor, pantalla de cocina) por
-  recarga ligera periódica: pide solo el fragmento que cambió, cada pocos segundos. Sin
-  WebSockets en la primera versión — menos piezas que fallen.
-
----
-
-## 5. Datos y consistencia
-
-- Base de datos **relacional** con transacciones. Cobrar una cuenta y cerrar la mesa es
-  una transacción, o no es nada.
-- **Los importes se guardan en centavos, en enteros.** Nunca en punto flotante.
-- **La línea de venta congela el precio** al momento de enviarla a cocina. Si el dueño
-  sube el precio del camarón a media tarde, las cuentas abiertas no cambian.
-- **Nada se borra.** Cancelar es una operación con motivo, autor y timestamp.
+- **Importes en centavos, enteros.** Nunca punto flotante (aplica al módulo de cuentas).
+- **El precio se congela en la línea de venta** al enviar a cocina. Si sube el precio del
+  camarón a media tarde, las cuentas abiertas no cambian.
+- **Idempotencia en dinero y comandas.** Cada envío llevará una clave única generada en
+  la pantalla; si el Wi-Fi hace reintentar, se aplica una sola vez. Es la protección real
+  contra la red intermitente de un restaurante.
+- **Nada se borra.** Cancelar es una operación con motivo, autor y hora.
+- **`synchronous = FULL` en SQLite.** Cada commit va a disco antes de responder: un corte
+  de luz no pierde una comanda ya enviada (RNF-6). Cuesta milisegundos y vale la pena.
+- **`journal_mode = WAL`.** Varias tablets leyendo mientras la caja escribe.
+- **El servidor calcula, el cliente pinta.** Totales, permisos y validaciones se resuelven
+  en el API. Lo que manda el navegador es una propuesta.
 
 ---
 
-## 6. Seguridad razonable para el tamaño del negocio
+## 6. Estrategia de interfaz
+
+- **Tres contextos, tres tratamientos** sobre el mismo sistema de diseño:
+  **piso** (táctil, botones enormes), **caja** (densidad media, teclado numérico),
+  **administración** (formularios y tablas).
+- **Objetivos táctiles de 48 px como mínimo** y colores de alto contraste: la terraza
+  tiene sol directo.
+- **El editor de plano usa Pointer Events**, no ratón: el mismo código funciona con dedo,
+  ratón y lápiz. Las figuras llevan `touch-action: none` para que arrastrar no haga
+  scroll de la página.
+- **Los campos numéricos X/Y/ancho/alto siempre están disponibles** junto al arrastre:
+  sirven para alinear con precisión y como respaldo si el arrastre falla en una tablet
+  vieja.
+- **Pantallas vivas por sondeo ligero** (la vista de salón se refresca sola cada 10 s).
+  Cuando la pantalla de cocina lo exija, se cambia a WebSocket; hoy sería complejidad sin
+  beneficio.
+
+---
+
+## 7. Seguridad razonable para el tamaño del negocio
 
 | Riesgo | Mitigación |
 |---|---|
-| Personal que se autoriza descuentos solos | Autorización por PIN de un rol superior + bitácora |
+| Personal que se autoriza descuentos solo | Autorización por PIN de un rol superior + bitácora |
 | Robo hormiga de efectivo | Corte por turno con diferencia visible y arqueo obligatorio |
 | Pérdida del equipo (agua, robo) | Respaldo diario automático fuera del local |
-| Alguien en el Wi-Fi de clientes accediendo al POS | Red Wi-Fi separada para el POS, con contraseña distinta a la de clientes |
-| Contraseñas débiles | PIN solo permite operar; la administración requiere usuario y contraseña real |
+| Wi-Fi de clientes con acceso al POS | Red separada para el POS, con contraseña distinta |
+| Contraseñas débiles | El PIN solo permite operar; la administración pide usuario y contraseña |
 
-No se busca seguridad de banco. Se busca que **nadie pueda mover dinero sin dejar
-rastro**.
+No se busca seguridad de banco. Se busca que **nadie mueva dinero sin dejar rastro**.
 
 ---
 
-## 7. Lo que deliberadamente NO hacemos
+## 8. Lo que deliberadamente NO hacemos
 
 | Tentación | Por qué la rechazamos |
 |---|---|
-| SPA con framework moderno | Rompe RNF-1 y RNF-2, y agrega un build que nadie mantendrá |
 | Microservicios | Un restaurante con 30 mesas es un monolito, y está bien |
-| Nube como única sede | Sin internet no habría venta; inaceptable |
-| ORM pesado con migraciones mágicas | Consultas explícitas y migraciones SQL versionadas |
-| Tiempo real por WebSocket desde el día 1 | Complejidad alta, valor bajo frente a recarga periódica |
+| Nube como única sede | Sin internet no habría venta: inaceptable |
+| Framework de UI genérico | El POS tiene reglas propias de tamaño y contraste; pesaría más de lo que ayuda |
+| ORM con migraciones mágicas | Migraciones en SQL que cualquiera puede leer y revertir |
+| Tiempo real por WebSocket desde el día 1 | Sondeo ligero resuelve hoy; se cambia cuando duela |
+| Estado global complejo en el cliente | El estado de la mesa vive en la base de datos, no en la tablet |
