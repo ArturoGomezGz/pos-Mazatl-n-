@@ -1,13 +1,13 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { db } from '../../db/cliente.js';
-import { cuentaLineas, cuentas, ordenLineas, ordenes, pagos } from '../../db/esquema.js';
+import { cuentaLineas, cuentas, mesas, ordenLineas, ordenes, pagos } from '../../db/esquema.js';
 import { conflicto, invalido, noEncontrado } from '../../http/errores.js';
 import { autorizar, registrar } from '../auth/auth.servicio.js';
 import { exigirTurnoAbierto } from '../caja/caja.servicio.js';
 import { datosImpuesto } from '../config/config.servicio.js';
 import { calcularImpuesto, repartir } from '../dinero.js';
-import { cerrarOrdenSiProcede, lineasDeOrden, obtenerOrden } from '../ordenes/ordenes.servicio.js';
+import { cerrarOrdenSiProcede, lineasDeOrden, obtenerOrden, ordenAbiertaDeMesa } from '../ordenes/ordenes.servicio.js';
 import type * as E from './cuentas.esquemas.js';
 
 type Asignacion = z.infer<typeof E.asignacion>;
@@ -312,6 +312,18 @@ export function reabrirCuenta(cuentaId: number, datos: Reapertura, solicitanteId
   if (!cuenta) throw noEncontrado('Cuenta');
   if (cuenta.estado !== 'cobrada') throw conflicto('Esa cuenta no está cobrada');
 
+  const orden = db.select().from(ordenes).where(eq(ordenes.id, cuenta.ordenId)).get();
+  if (!orden) throw noEncontrado('Orden');
+
+  // La mesa pudo haber servido a otro grupo desde que esta cuenta se cobró
+  // (es justo lo que pasa en un festivo con rotación rápida). Reabrir sin este
+  // chequeo dejaría dos órdenes "abiertas" en la misma mesa a la vez: el mismo
+  // estado imposible que abrirOrden() y transferirOrden() nunca permiten crear.
+  const ordenActivaEnMesa = ordenAbiertaDeMesa(orden.mesaId);
+  if (ordenActivaEnMesa && ordenActivaEnMesa.id !== orden.id) {
+    throw conflicto('Esa mesa ya está sirviendo a otro grupo. No se puede reabrir esta cuenta ahí.');
+  }
+
   return db.transaction((tx) => {
     tx.delete(pagos).where(eq(pagos.cuentaId, cuentaId)).run();
     const reabierta = tx
@@ -321,6 +333,7 @@ export function reabrirCuenta(cuentaId: number, datos: Reapertura, solicitanteId
       .returning()
       .get();
     tx.update(ordenes).set({ estado: 'abierta', cerradaEn: null }).where(eq(ordenes.id, cuenta.ordenId)).run();
+    tx.update(mesas).set({ estado: 'ocupada' }).where(eq(mesas.id, orden.mesaId)).run();
 
     registrar(solicitanteId, 'cuenta_reabierta', 'cuenta', cuentaId, `${datos.motivo} · autorizó ${autorizador.nombre}`);
     return reabierta;

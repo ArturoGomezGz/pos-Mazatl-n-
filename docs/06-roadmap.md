@@ -76,9 +76,10 @@ saturada, varios meseros en paralelo, cocina desbordada, cierre en caliente) con
 la API real, con concurrencia forzada de verdad. Dictamen completo en
 [`08-prueba-de-estres-festivo.md`](08-prueba-de-estres-festivo.md). Resumen:
 
-- **Corregido, catastrófico:** cerrar una mesa abierta por error dejaba una cuenta
-  huérfana que bloqueaba el cierre de caja para siempre, sin reparación posible desde
-  la aplicación.
+- **Corregido, catastrófico (x2):** cerrar una mesa abierta por error, y por
+  separado, reabrir una cuenta ya cobrada, podían dejar el cierre de caja bloqueado
+  para siempre por caminos distintos — el segundo se encontró en una revisión crítica
+  posterior a la simulación original, no en la simulación misma.
 - **Corregido, grave:** un platillo se podía asociar a la cuenta de una mesa distinta
   sin aviso (validación ausente en "pasar a…" y "repartir…").
 - **Corregido, grave:** la pantalla de cocina acumulaba comandas de mesas ya cobradas
@@ -92,7 +93,10 @@ la API real, con concurrencia forzada de verdad. Dictamen completo en
   que el código que las reemplazaría. Justificación completa en el documento.
 - Cuadre verificado: $13,430.00 generados en el servicio simulado, $0.00 de
   diferencia entre la suma manual y el reporte del sistema.
-- 26 pruebas de reglas de negocio en verde (5 nuevas de esta ronda).
+- Una revisión crítica de escritorio (sin repetir la simulación) confirmó que la
+  garantía de concurrencia es sólida y encontró el segundo defecto catastrófico antes
+  de que llegara a producción.
+- 28 pruebas de reglas de negocio en verde (7 nuevas de esta ronda).
 
 ## Fase 2 · Cerrar la operación (2 semanas)
 

@@ -395,3 +395,51 @@ test('la pantalla de cocina no acumula comandas de mesas ya cobradas o cancelada
   const trasCobrar = ordenes.comandasPendientes();
   assert.equal(trasCobrar.length, antesDeCobrar - 1, 'la comanda de la mesa cobrada debe desaparecer del tablero de cocina');
 });
+
+/* ── Hallazgo de la revisión crítica: reabrir cuenta y la mesa reutilizada ── */
+
+test('reabrir una cuenta cobrada funciona si nadie más usó la mesa', () => {
+  const mesaId = nuevaMesa();
+  const orden = ordenes.abrirOrden({ mesaId, comensales: 2 }, mesero.id);
+  const producto = menu.obtenerMenu().flatMap((c) => c.productos).find((p) => p.nombre === 'Guacamole')!;
+  ordenes.agregarLineas(orden.id, {
+    lineas: [{ varianteId: producto.variantes[0]!.id, cantidadMilesimas: 1000, nota: '', modificadoresIds: [] }],
+  });
+  const [cuenta] = cuentas.cuentasDeOrden(orden.id);
+  cuentas.cobrar(cuenta!.id, { pagos: [{ metodo: 'efectivo', montoCentavos: cuenta!.totalCentavos, referencia: '' }] }, admin.id);
+  assert.equal(salon.obtenerMesa(mesaId, layoutId).estado, 'por_limpiar');
+
+  cuentas.reabrirCuenta(cuenta!.id, { motivo: 'cliente reclamó el cobro', pinAutorizacion: '1111' }, admin.id);
+
+  assert.equal(ordenes.obtenerOrden(orden.id).estado, 'abierta');
+  assert.equal(salon.obtenerMesa(mesaId, layoutId).estado, 'ocupada', 'la mesa vuelve a reflejar que está en servicio');
+});
+
+test('reabrir una cuenta NO debe crear dos órdenes abiertas en la misma mesa', () => {
+  const mesaId = nuevaMesa();
+
+  // Orden A: se sirve y se cobra, como cualquier rotación normal en un festivo.
+  const ordenA = ordenes.abrirOrden({ mesaId, comensales: 2 }, mesero.id);
+  const producto = menu.obtenerMenu().flatMap((c) => c.productos).find((p) => p.nombre === 'Guacamole')!;
+  ordenes.agregarLineas(ordenA.id, {
+    lineas: [{ varianteId: producto.variantes[0]!.id, cantidadMilesimas: 1000, nota: '', modificadoresIds: [] }],
+  });
+  const [cuentaA] = cuentas.cuentasDeOrden(ordenA.id);
+  cuentas.cobrar(cuentaA!.id, { pagos: [{ metodo: 'efectivo', montoCentavos: cuentaA!.totalCentavos, referencia: '' }] }, admin.id);
+
+  // La mesa se limpia y entra el siguiente grupo: orden B, la que de verdad está en curso.
+  salon.actualizarMesa(mesaId, { estado: 'libre' }, layoutId);
+  const ordenB = ordenes.abrirOrden({ mesaId, comensales: 4 }, mesero.id);
+
+  // Antes de la corrección, esto reactivaba A sin ningún aviso, dejando dos
+  // órdenes "abierta" en la misma mesa — un estado que el resto del sistema
+  // (el tablero, la pantalla de cocina, el cierre de caja) da por imposible.
+  assert.throws(
+    () => cuentas.reabrirCuenta(cuentaA!.id, { motivo: 'reclamo tardío', pinAutorizacion: '1111' }, admin.id),
+    /ya está sirviendo a otro grupo/,
+  );
+
+  // La orden B, la real, sigue siendo la única visible como abierta en esa mesa.
+  const activaEnMesa = ordenes.ordenAbiertaDeMesa(mesaId);
+  assert.equal(activaEnMesa?.id, ordenB.id);
+});

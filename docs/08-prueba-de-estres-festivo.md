@@ -15,18 +15,25 @@ peticiones en paralelo (`Promise.all`), no solo secuenciales.
 base de datos SQLite para confirmar o descartar cada sospecha antes de reportarla como
 hallazgo. Nada de lo que sigue es especulación: cada afirmación se comprobó con datos.
 
+Este documento pasó además por una **revisión crítica de escritorio** (solo lectura
+del código, sin repetir la simulación) que encontró un cuarto defecto real —de la
+misma familia catastrófica que los tres de abajo, por una puerta distinta— y varios
+huecos de alcance que quedan anotados donde corresponde. Esa revisión ya está
+incorporada: lo que sigue refleja el estado corregido y probado, no el original.
+
 ---
 
 ## Veredicto en tres líneas
 
 **El sistema aguanta un día festivo en lo que importa más: el dinero cuadra al
 centavo bajo caos real, y la concurrencia de escritura está protegida por la
-arquitectura, no solo por buena suerte.** Se encontró y se corrigió un defecto propio
-que sí era catastrófico —una mesa cerrada por error dejaba la caja imposible de cerrar
-para siempre, sin ninguna forma de repararlo desde la aplicación—, además de dos
-defectos de integridad de datos silenciosos. Los tres ya están corregidos y probados.
-Lo que no se corrige (fusión de mesas, mesas virtuales para la barra) se documenta
-abajo como decisión consciente, no como pendiente.
+arquitectura, no solo por buena suerte.** Se encontraron y se corrigieron dos
+defectos catastróficos propios —cerrar una mesa por error, y reabrir una cuenta
+cobrada, dejaban ambos la caja imposible de cerrar para siempre por caminos
+distintos, sin ninguna forma de repararlo desde la aplicación—, además de dos
+defectos de integridad de datos silenciosos. Los cuatro ya están corregidos y
+probados. Lo que no se corrige (fusión de mesas, mesas virtuales para la barra) se
+documenta abajo como decisión consciente, no como pendiente.
 
 ---
 
@@ -134,6 +141,30 @@ rotando, esto vuelve el tablero de cocina inútil justo cuando más se necesita.
 están abiertas. Tras la corrección, con el mismo volumen del servicio simulado, el
 tablero mostró exactamente 1 comanda: la única mesa real que seguía en servicio.
 
+### Catastrófico — corregido (encontrado en la revisión crítica, no en la simulación original)
+
+**Reabrir una cuenta cobrada podía dejar dos órdenes abiertas en la misma mesa, resucitando el primer defecto por una puerta distinta.**
+
+La simulación original probó el cierre de caja en caliente, pero no ejercitó
+`reabrirCuenta` bajo la rotación rápida de mesas que sí ejercitó en otras partes del
+servicio. Una revisión posterior, solo de lectura de código, encontró que
+`reabrirCuenta` reactivaba la orden a `estado: 'abierta'` sin comprobar —como sí lo
+hacen `abrirOrden` y `transferirOrden`— que la mesa no estuviera ya sirviendo a otro
+grupo. La secuencia real: una mesa se cobra y se libera, otro grupo la ocupa con una
+orden nueva, y horas después un administrador reabre la cuenta original por un
+reclamo. Sin el chequeo, quedaban **dos órdenes `abierta` en la misma mesa a la vez**,
+un estado que el resto del sistema da por imposible: el tablero del mesero mostraría
+la orden equivocada, una comanda no marcada "lista" de la orden vieja reaparecería en
+cocina, y la cuenta reabierta volvería a bloquear el cierre de turno — el mismo
+defecto catastrófico original, por un camino distinto.
+
+*Corregido:* `reabrirCuenta` ahora rechaza la operación si la mesa tiene una orden
+activa distinta de la que se intenta reabrir, con el mismo mensaje de conflicto que ya
+usan las otras dos funciones. Al reabrir sin conflicto, la mesa también vuelve a
+`ocupada`, reflejando que está de nuevo en servicio. Dos pruebas de regresión cubren
+el caso legítimo (mesa libre, se reabre sin problema) y el caso bloqueado (mesa
+reutilizada, se rechaza con el mensaje correcto).
+
 ### Molesto — decisión de proceso, no de software
 
 **Ninguno de los siguientes puntos se corrige con código.** Son parte de cómo opera
@@ -176,6 +207,17 @@ de datos migra a algo con conexiones concurrentes reales (PostgreSQL) sin agrega
 bloqueos explícitos. No es una advertencia teórica: es la diferencia entre que el
 corte de caja siga cuadrando o no.
 
+**Hay una segunda forma, más silenciosa, de perder esta protección.** No depende de
+cambiar el despliegue: basta con que una función de negocio futura use `await` en
+medio de lo que hoy es una operación síncrona de punta a punta — por ejemplo, mandar
+un recibo por WhatsApp o llamar a una pasarela de pago desde dentro de `cobrar()`,
+antes de que termine su transacción. En cuanto eso pasa, dos peticiones concurrentes
+sí pueden entrelazarse a mitad de un cobro, sin que nadie haya tocado el despliegue.
+Hoy no existe ni un solo `await` en el código de los módulos de negocio (`ordenes`,
+`cuentas`, `caja`, `salon`, `menu`) — es una convención real, pero no está exigida por
+ninguna prueba ni regla de lint. La sección de estrategias deja esto como regla
+explícita para quien agregue la siguiente función asíncrona.
+
 **El resto de los casos también se comportó correctamente:**
 - Transferir una mesa con la comanda ya enviada movió el consumo sin perderlo ni
   duplicarlo, y dejó los estados de origen y destino correctos.
@@ -186,6 +228,67 @@ corte de caja siga cuadrando o no.
 - La latencia de la pantalla de cocina con 26 comandas simultáneas fue de 2-3 ms: el
   volumen de un restaurante pequeño no acerca siquiera el sistema a un límite de
   rendimiento.
+
+---
+
+## Una corrección honesta sobre lo que la simulación del grupo de 14 probó
+
+La tabla de decisión estratégica (más abajo) recomienda operar un grupo grande sobre
+varias mesas con una **cuenta ancla**: todo el consumo en una sola orden, aunque el
+grupo esté sentado en tres mesas físicas. Pero la bitácora del servicio simulado
+registra el grupo de 14 como **tres órdenes separadas, una por mesa** — es decir, la
+carga que de verdad se sometió a prueba fue el escenario que la tabla dice que *no*
+se debe usar, no el que se recomienda hacia adelante.
+
+Esto no invalida la recomendación: se sostiene bien en el papel, y el ataque más duro
+que se le hizo —un grupo de 14 que al final quiere pagar cada quien lo suyo— no
+encontró ninguna grieta, porque `dividirEnPartesIguales` y `repartirLinea` operan
+sobre una sola orden exactamente como haría falta. Pero es distinto decir "el diseño
+se sostiene" que decir "se probó bajo carga", y este documento decía la segunda cosa
+cuando solo había hecho la primera. La ergonomía real de una cuenta ancla —un mesero
+llevando de memoria quién se sienta en cuál de las tres mesas mientras mezcla
+platillos de las tres en una sola comanda— **no se ha probado**, ni con datos ni en la
+interfaz. Antes de enseñarla como el proceso oficial, vale la pena ejercitarla una vez
+con un mesero real.
+
+## Riesgos documentados sin corrección de código
+
+Estos puntos se revisaron y se decidió no tocarlos ahora, con la razón explícita de
+cada uno — no son descuidos, son decisiones.
+
+- **El estado de mesa `reservada` es puramente decorativo.** El esquema de datos lo
+  admite y el editor del comedor lo puede asignar, pero `abrirOrden` nunca lo
+  respeta: cualquier mesero puede abrir una mesa marcada como reservada, y hacerlo le
+  borra la marca sin ningún aviso. No existe ningún módulo de reservaciones (ver
+  [`01-vision-y-alcance.md`](01-vision-y-alcance.md), donde quedó fuera de alcance de
+  esta fase a propósito). No se construye cumplimiento para un campo que acompaña a
+  una funcionalidad que todavía no existe; se deja anotado aquí para que nadie asuma
+  que "reservada" protege algo hoy.
+
+- **No hay forma de cancelar una comanda completa de un solo golpe.** Cancelar algo ya
+  enviado a cocina es siempre línea por línea, cada una con su propio PIN y su propio
+  registro en bitácora — correcto para auditoría, pero significa N autorizaciones
+  seguidas si una comanda completa se mandó a la estación equivocada. El rodeo ya
+  funciona sin cambios: cancelar todas las líneas de una orden y después cerrarla como
+  "mesa vacía" es válido, porque el conteo de consumo excluye lo cancelado. Es una
+  mejora de conveniencia de interfaz (seleccionar varias líneas, un solo PIN), no un
+  defecto — queda para una ronda futura si en la práctica resulta ser fricción real,
+  no antes.
+
+- **El respaldo de la base de datos, cuando se construya, tiene que respetar WAL.**
+  Hoy no existe ningún script de respaldo en el repo, así que no hay nada que
+  corregir todavía — pero con `journal_mode = WAL` activo, copiar solo el archivo
+  `.sqlite` mientras hay escritura activa puede dejar una copia inconsistente si no se
+  incluyen también los archivos `-wal`/`-shm`, o si no se usa la API de respaldo en
+  línea de SQLite (`VACUUM INTO` o el backup API). Queda anotado para quien escriba
+  ese script, no como pendiente de esta ronda.
+
+- **Un mesero desactivado a media comida no deja ninguna mesa huérfana.** Se revisó
+  explícitamente: no existe "dueño" de una mesa en el sistema — cualquier sesión con
+  el rol adecuado puede seguir atendiendo cualquier mesa, y el `meseroId` de la orden
+  es un dato histórico, no un candado de acceso. Desactivar a alguien invalida su
+  sesión, pero no bloquea nada de lo que ya tenía abierto. No había nada que corregir
+  aquí; se deja constancia de que se revisó.
 
 ---
 
@@ -255,16 +358,32 @@ negocio (no la excepción), esta decisión se revisaría. Hoy no es ese negocio.
    carrera. Es una restricción deliberada del despliegue (ver
    [`03-arquitectura.md`](03-arquitectura.md)), no un accidente: escalar a varios
    procesos o cambiar de base de datos exige revisar esta garantía explícitamente,
-   no asumir que sigue ahí.
+   no asumir que sigue ahí. **Esta garantía también depende de una regla de código,
+   no solo de infraestructura: ningún módulo de negocio (`ordenes`, `cuentas`,
+   `caja`, `salon`, `menu`) debe usar `await` dentro de una operación que hoy es
+   síncrona de punta a punta.** El día que una función necesite llamar algo
+   asíncrono de verdad (una pasarela de pago, una notificación externa), esa llamada
+   va después de que la transacción síncrona ya haya terminado y confirmado — nunca
+   intercalada con ella.
 
-5. **No toda solución a un problema real es una funcionalidad nueva.** Grupos grandes
+5. **Toda regla que cierra un estado por un lado tiene que cerrarlo por todos los
+   lados por donde ese estado puede volver a abrirse.** `abrirOrden` y
+   `transferirOrden` protegen "una mesa, una orden abierta" al crear o mover una
+   orden; `reabrirCuenta` volvía a poner una orden en `abierta` sin ese mismo
+   chequeo, porque es una tercera puerta hacia el mismo estado que nadie había
+   revisado. Cuando se agregue una función nueva que pueda dejar algo "abierto",
+   "activo" o "pendiente", la pregunta no es solo si esa función es correcta en
+   aislamiento: es si ya existe una regla en otro lado que asume que esa puerta no
+   existía.
+
+6. **No toda solución a un problema real es una funcionalidad nueva.** Grupos grandes
    sin mesa fusionada y la barra saturada son problemas reales de un festivo, y ambos
    se resuelven mejor con una regla de operación que con una pantalla nueva. El
    criterio para decidir entre las dos: si el caso ocurre a diario, se programa; si
    ocurre unas cuantas veces al mes y un rodeo de un paso ya lo resuelve, se enseña,
    no se construye.
 
-6. **El presupuesto de mantenimiento es un costo real de cada funcionalidad.** Antes
+7. **El presupuesto de mantenimiento es un costo real de cada funcionalidad.** Antes
    de construir algo, la pregunta no es solo "¿serviría?" sino "¿quién en este
    restaurante va a mantenerlo entendido dentro de dos años?". `orden_padre_id` sigue
    en el modelo de datos porque no estorba estar ahí sin usarse; no se implementa
