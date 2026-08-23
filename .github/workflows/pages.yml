@@ -7,7 +7,7 @@ name: Publicar demo en GitHub Pages
 on:
   push:
     branches:
-      - main
+      - master
       - claude/mariscos-mazatlan-pos-7p8rzu
   workflow_dispatch: {}
 
