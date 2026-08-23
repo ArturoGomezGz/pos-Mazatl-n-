@@ -1,10 +1,15 @@
 import { Router, type Request } from 'express';
 import { noEncontrado } from '../../http/errores.js';
+import { requiereRol, requiereSesion } from '../../http/sesion.js';
 import { idDeRuta, validar } from '../../http/validar.js';
 import * as E from './salon.esquemas.js';
 import * as salon from './salon.servicio.js';
 
 export const rutasSalon = Router();
+rutasSalon.use(requiereSesion);
+
+/** Diseñar el comedor es cosa del dueño; verlo y usarlo, de todo el personal. */
+const soloAdmin = requiereRol('admin');
 
 /** El editor siempre trabaja sobre una distribución. Si no viene en la URL,
  *  se usa la activa: el caso normal del día a día. */
@@ -26,58 +31,65 @@ rutasSalon.get('/plano', (req, res) => {
 /* Distribuciones */
 rutasSalon.get('/layouts', (_req, res) => res.json(salon.listarLayouts()));
 
-rutasSalon.post('/layouts', (req, res) => {
+rutasSalon.post('/layouts', soloAdmin, (req, res) => {
   res.status(201).json(salon.crearLayout(validar(E.layoutNuevo, req.body)));
 });
 
-rutasSalon.patch('/layouts/:id', (req, res) => {
+rutasSalon.patch('/layouts/:id', soloAdmin, (req, res) => {
   res.json(salon.actualizarLayout(idDeRuta(req.params.id), validar(E.layoutCambio, req.body)));
 });
 
-rutasSalon.delete('/layouts/:id', (req, res) => {
+rutasSalon.delete('/layouts/:id', soloAdmin, (req, res) => {
   res.json(salon.eliminarLayout(idDeRuta(req.params.id)));
 });
 
 /* Zonas */
-rutasSalon.post('/zonas', (req, res) => {
+rutasSalon.post('/zonas', soloAdmin, (req, res) => {
   res.status(201).json(salon.crearZona(validar(E.zonaNueva, req.body)));
 });
 
-rutasSalon.patch('/zonas/:id', (req, res) => {
+rutasSalon.patch('/zonas/:id', soloAdmin, (req, res) => {
   res.json(salon.actualizarZona(idDeRuta(req.params.id), validar(E.zonaCambio, req.body)));
 });
 
-rutasSalon.delete('/zonas/:id', (req, res) => {
+rutasSalon.delete('/zonas/:id', soloAdmin, (req, res) => {
   res.json(salon.eliminarZona(idDeRuta(req.params.id)));
 });
 
 /* Mesas */
-rutasSalon.post('/mesas', (req, res) => {
+rutasSalon.post('/mesas', soloAdmin, (req, res) => {
   res.status(201).json(salon.crearMesa(validar(E.mesaNueva, req.body), layoutDeConsulta(req)));
 });
 
-rutasSalon.patch('/mesas/:id', (req, res) => {
+/** El estado de la mesa (ocupada, por limpiar, libre) lo mueve el piso, no el dueño.
+ *  El resto de los atributos —nombre, capacidad, forma, posición— es configuración. */
+rutasSalon.post('/mesas/:id/estado', (req, res) => {
+  const { estado } = validar(E.mesaCambio.pick({ estado: true }).required(), req.body);
+  res.json(salon.actualizarMesa(idDeRuta(req.params.id), { estado }, layoutDeConsulta(req)));
+});
+
+rutasSalon.patch('/mesas/:id', soloAdmin, (req, res) => {
   res.json(salon.actualizarMesa(idDeRuta(req.params.id), validar(E.mesaCambio, req.body), layoutDeConsulta(req)));
 });
 
-rutasSalon.delete('/mesas/:id', (req, res) => {
+rutasSalon.delete('/mesas/:id', soloAdmin, (req, res) => {
   res.json(salon.eliminarMesa(idDeRuta(req.params.id)));
 });
 
 /* Elementos decorativos */
-rutasSalon.post('/elementos', (req, res) => {
+rutasSalon.post('/elementos', soloAdmin, (req, res) => {
   res.status(201).json(salon.crearElemento(validar(E.elementoNuevo, req.body), layoutDeConsulta(req)));
 });
 
-rutasSalon.patch('/elementos/:id', (req, res) => {
+rutasSalon.patch('/elementos/:id', soloAdmin, (req, res) => {
   res.json(salon.actualizarElemento(idDeRuta(req.params.id), validar(E.elementoCambio, req.body)));
 });
 
-rutasSalon.delete('/elementos/:id', (req, res) => {
+rutasSalon.delete('/elementos/:id', soloAdmin, (req, res) => {
   res.json(salon.eliminarElemento(idDeRuta(req.params.id)));
 });
 
 /* Guardado por lote del editor */
-rutasSalon.put('/posiciones', (req, res) => {
+rutasSalon.put('/posiciones', soloAdmin, (req, res) => {
   res.json(salon.guardarPosiciones(layoutDeConsulta(req), validar(E.posicionesLote, req.body)));
 });

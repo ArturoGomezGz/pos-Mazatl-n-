@@ -15,7 +15,7 @@ export function validar<T>(esquema: ZodType<T>, dato: unknown): T {
 }
 
 /** Convierte un parámetro de ruta en entero positivo o lanza 400. */
-export function idDeRuta(valor: string | undefined, nombre = 'id'): number {
+export function idDeRuta(valor: unknown, nombre = 'id'): number {
   const n = Number(valor);
   if (!Number.isInteger(n) || n <= 0) throw invalido(`El parámetro ${nombre} debe ser un entero positivo`);
   return n;

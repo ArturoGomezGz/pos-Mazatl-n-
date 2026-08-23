@@ -72,22 +72,45 @@ server/
     http/
       errores.ts        ErrorHttp + manejador central
       validar.ts        Puente con Zod
+    http/sesion.ts      Sesión por token y permisos por rol
     modulos/
+      dinero.ts         Toda la aritmética de dinero, en centavos enteros
+      auth/             usuarios, PIN, sesiones, autorizaciones, bitácora
       salon/            zonas, mesas, distribuciones, plano
         salon.esquemas.ts   Contratos de entrada (Zod)
         salon.servicio.ts   Reglas de negocio  ← aquí vive la verdad
         salon.rutas.ts      HTTP delgado
         salon.prueba.ts     Pruebas del servicio
+      menu/             categorías, productos, variantes, modificadores
+      ordenes/          órdenes, líneas, comandas, cancelaciones
+      cuentas/          división, descuentos, propinas, cobro
+      caja/             turnos, movimientos, cortes X y Z
+      reportes/         consultas agregadas de venta
+      config/           datos del negocio, impuestos, estilo del menú
 
 client/
   src/
     api/cliente.ts      Único punto que habla con el API
+    estado/Sesion.tsx   Sesión, usuario y configuración vigente
     componentes/
       Lienzo.tsx           Plano interactivo (arrastrar, redimensionar, tocar)
       PanelPropiedades.tsx Edición fina de lo seleccionado
+      MenuVenta.tsx        Pantalla de venta, con el estilo que el dueño configuró
+      DialogoProducto.tsx  Captura de tamaño, peso, precio del día y modificadores
+      PedirAutorizacion.tsx Un solo mecanismo para toda acción sensible
+      TecladoNumerico.tsx  Teclado grande para caja y piso
     paginas/
-      EditorPlano.tsx      Editor del comedor (administrador)
+      Ingreso.tsx          Ingreso por PIN
       VistaSalon.tsx       Vista de piso (mesero)
+      TomaOrden.tsx        Captura y envío a cocina
+      Cobro.tsx            Cuentas, división, descuentos y cobro
+      Cocina.tsx           Comandas pendientes
+      Caja.tsx             Turno, movimientos y corte
+      EditorPlano.tsx      Editor del comedor (administrador)
+      AdminMenu.tsx        Catálogo y modificadores
+      AdminConfig.tsx      Negocio, impuestos y estilo del menú
+      AdminUsuarios.tsx    Equipo y bitácora
+      Reportes.tsx         Ventas, productos, meseros, cancelaciones
     hooks/usePlano.ts   Carga del plano
     tipos.ts            Tipos compartidos con el API
 ```
@@ -134,14 +157,30 @@ Va en una transacción: queda todo o no queda nada.
 
 ---
 
+## 4b. El menú flexible
+
+El módulo `menu` es el que permite que el mismo sistema sirva a restaurantes con menús
+muy distintos: cuatro estilos de venta (precio único, tamaños, por peso, precio del día),
+modificadores reutilizables entre productos, y un estilo visual de la pantalla de venta
+que el dueño configura y previsualiza sin ayuda.
+
+El diseño completo está en [`07-menu-flexible.md`](07-menu-flexible.md).
+
+---
+
 ## 5. Decisiones que sostienen la operación
 
 - **Importes en centavos, enteros.** Nunca punto flotante (aplica al módulo de cuentas).
 - **El precio se congela en la línea de venta** al enviar a cocina. Si sube el precio del
   camarón a media tarde, las cuentas abiertas no cambian.
-- **Idempotencia en dinero y comandas.** Cada envío llevará una clave única generada en
-  la pantalla; si el Wi-Fi hace reintentar, se aplica una sola vez. Es la protección real
-  contra la red intermitente de un restaurante.
+- **Idempotencia en dinero y comandas.** Cada envío a cocina y cada cobro lleva una clave
+  única generada en la pantalla; si el Wi-Fi hace reintentar, se aplica una sola vez. Es
+  la protección real contra la red intermitente de un restaurante.
+- **Sin turno de caja abierto no se cobra.** Es la regla que hace que el corte cuadre.
+- **Toda acción sensible pide PIN de un rol superior** y queda en la bitácora: cancelar
+  algo enviado, descontar, reabrir una cuenta cobrada.
+- **Las divisiones de cuenta no pierden centavos.** El reparto proporcional asigna los
+  centavos sobrantes por mayor resto, así la suma de las partes es exactamente el total.
 - **Nada se borra.** Cancelar es una operación con motivo, autor y hora.
 - **`synchronous = FULL` en SQLite.** Cada commit va a disco antes de responder: un corte
   de luz no pierde una comanda ya enviada (RNF-6). Cuesta milisegundos y vale la pena.

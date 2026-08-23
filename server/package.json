@@ -10,7 +10,7 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "db:migrate": "tsx src/db/migrar.ts",
     "db:seed": "tsx src/db/semilla.ts",
-    "test": "node --import tsx --test src/**/*.prueba.ts"
+    "test": "node --import tsx --test \"src/**/*.prueba.ts\""
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",

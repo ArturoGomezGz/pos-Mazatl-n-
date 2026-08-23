@@ -29,37 +29,33 @@ prevista para Fase 3).
 
 ---
 
-## Fase 1b · MVP vendible (3–4 semanas)
+## Fase 1b · MVP vendible — **entregado**
 
-Lo mínimo para que el restaurante **deje de usar lo que usa hoy**.
+El restaurante ya puede operar un servicio completo sin el sistema anterior.
 
-| Módulo | Alcance |
+| Módulo | Entregado |
 |---|---|
-| Menú | Categorías, productos, variantes de precio, marcar agotado |
-| Órdenes | Abrir mesa, capturar, enviar comanda, cancelar con autorización |
-| Cuentas | Precuenta, cobro efectivo/tarjeta/transferencia, ticket impreso |
-| Caja | Abrir y cerrar turno con arqueo y diferencia |
-| Reportes | Venta del día, por método de pago |
-| Seguridad | Roles, bitácora de acciones sensibles |
+| Usuarios | ✅ Ingreso por PIN, cuatro roles, navegación distinta por rol, bitácora de acciones sensibles |
+| Menú | ✅ Categorías, productos con **cuatro estilos de venta**, modificadores reutilizables, agotado del día |
+| Órdenes | ✅ Abrir mesa, capturar, notas, comandas separadas por estación, envío idempotente |
+| Cocina | ✅ Pantalla de comandas pendientes con alerta de demora y botón “listo” |
+| Cuentas | ✅ Precuenta, división en partes iguales y por platillo, descuentos y propinas |
+| Cobro | ✅ Efectivo con cambio, tarjeta, transferencia, pago mixto, cobro idempotente |
+| Caja | ✅ Apertura de turno, entradas y salidas de efectivo, corte con diferencia |
+| Reportes | ✅ Venta, ticket promedio, por método, más vendidos, por mesero, cancelaciones, exportación CSV |
+| Configuración | ✅ Datos del negocio, IVA, propinas sugeridas y **estilo del menú con vista previa en vivo** |
 
-**Criterios de aceptación**
-- El dueño monta el plano completo del comedor sin ayuda.
-- Un servicio completo de un sábado se opera sin volver al sistema anterior.
-- El corte de caja cuadra con el conteo físico.
-- Se puede vender con el internet desconectado.
+**Pendiente de la fase:** impresión en impresora térmica (hoy se imprime por el
+navegador) y respaldo con un botón.
 
----
+## Fase 2 · Cerrar la operación (2 semanas)
 
-## Fase 2 · Operación fina (2–3 semanas)
-
-- Modificadores y notas por platillo.
-- División de cuentas (por partes y por platillo) y pago mixto.
-- Propinas por mesero.
-- Pantalla de cocina y comandas por estación.
-- Unión de mesas.
-- Descuentos y cortesías con autorización.
-- Reportes: productos más vendidos, venta por mesero, cancelaciones.
-- Exportación a CSV.
+- **Impresión térmica** de comandas, precuenta, ticket y corte (validar antes el modelo).
+- **Respaldo con un botón** y restauración asistida.
+- Unión de mesas y transferencia de orden desde la interfaz.
+- Reabrir cuenta cobrada desde la pantalla de cobro.
+- Cortesías desde piso (el servicio ya existe; falta el botón).
+- Propinas por mesero repartidas en el corte.
 
 ---
 
