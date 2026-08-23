@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { db } from '../../db/cliente.js';
-import { cuentaLineas, cuentas, ordenes, pagos } from '../../db/esquema.js';
+import { cuentaLineas, cuentas, ordenLineas, ordenes, pagos } from '../../db/esquema.js';
 import { conflicto, invalido, noEncontrado } from '../../http/errores.js';
 import { autorizar, registrar } from '../auth/auth.servicio.js';
 import { exigirTurnoAbierto } from '../caja/caja.servicio.js';
@@ -132,6 +132,14 @@ export function asignarLinea(datos: Asignacion) {
     if (!cuenta) throw noEncontrado('Cuenta');
     if (cuenta.estado !== 'abierta') throw conflicto('Esa cuenta ya fue cobrada');
 
+    // La línea tiene que ser de la misma mesa que la cuenta destino. Sin este
+    // control, dos órdenes distintas podían enlazarse por error (o por una
+    // llamada directa a la API) y dejar una asociación cruzada que ningún
+    // reporte espera encontrar.
+    const linea = tx.select({ ordenId: ordenLineas.ordenId }).from(ordenLineas).where(eq(ordenLineas.id, datos.lineaId)).get();
+    if (!linea) throw noEncontrado('Línea');
+    if (linea.ordenId !== cuenta.ordenId) throw conflicto('Ese platillo no pertenece a esta mesa');
+
     if (datos.exclusiva) {
       const hermanas = tx.select({ id: cuentas.id }).from(cuentas).where(eq(cuentas.ordenId, cuenta.ordenId)).all();
       for (const h of hermanas) {
@@ -161,6 +169,10 @@ export function repartirLinea(datos: Reparto) {
 
     const ordenId = destinos[0]!.ordenId;
     if (destinos.some((c) => c.ordenId !== ordenId)) throw conflicto('Las cuentas deben ser de la misma mesa');
+
+    const linea = tx.select({ ordenId: ordenLineas.ordenId }).from(ordenLineas).where(eq(ordenLineas.id, datos.lineaId)).get();
+    if (!linea) throw noEncontrado('Línea');
+    if (linea.ordenId !== ordenId) throw conflicto('Ese platillo no pertenece a esta mesa');
 
     // Se quita de todas las cuentas de la orden y se reparte solo entre las elegidas.
     const hermanas = tx.select({ id: cuentas.id }).from(cuentas).where(eq(cuentas.ordenId, ordenId)).all();

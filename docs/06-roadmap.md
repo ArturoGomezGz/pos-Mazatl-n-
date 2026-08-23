@@ -69,6 +69,31 @@ interfaz no era usable en 390 px. Lo corregido:
 - **Dividir salió del camino principal**: un enlace discreto al pie del ticket, con
   tres opciones en lenguaje de piso, incluida “repartir un platillo compartido”.
 
+## Fase 1d · Prueba de estrés de día festivo — **entregado**
+
+Una simulación de un 10 de mayo (grupos grandes, mesas sobre-capacidad, barra
+saturada, varios meseros en paralelo, cocina desbordada, cierre en caliente) contra
+la API real, con concurrencia forzada de verdad. Dictamen completo en
+[`08-prueba-de-estres-festivo.md`](08-prueba-de-estres-festivo.md). Resumen:
+
+- **Corregido, catastrófico:** cerrar una mesa abierta por error dejaba una cuenta
+  huérfana que bloqueaba el cierre de caja para siempre, sin reparación posible desde
+  la aplicación.
+- **Corregido, grave:** un platillo se podía asociar a la cuenta de una mesa distinta
+  sin aviso (validación ausente en "pasar a…" y "repartir…").
+- **Corregido, grave:** la pantalla de cocina acumulaba comandas de mesas ya cobradas
+  o canceladas para siempre.
+- **Confirmado que resiste:** cinco condiciones de carrera reales (doble apertura de
+  mesa, cobro y captura simultáneos, doble clic con y sin protección) se comportaron
+  de forma segura gracias a que SQLite síncrono en un solo proceso serializa toda
+  escritura — una restricción de arquitectura que hay que preservar, no un accidente.
+- **Decisión consciente de no programar:** fusión formal de mesas y "mesas virtuales"
+  para la barra. Ambas se resuelven con reglas de operación más baratas de mantener
+  que el código que las reemplazaría. Justificación completa en el documento.
+- Cuadre verificado: $13,430.00 generados en el servicio simulado, $0.00 de
+  diferencia entre la suma manual y el reporte del sistema.
+- 26 pruebas de reglas de negocio en verde (5 nuevas de esta ronda).
+
 ## Fase 2 · Cerrar la operación (2 semanas)
 
 - **Impresión térmica** de comandas, precuenta, ticket y corte (validar antes el modelo).

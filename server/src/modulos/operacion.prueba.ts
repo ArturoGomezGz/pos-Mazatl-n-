@@ -306,3 +306,92 @@ test('el tablero del mesero muestra lo que reclama atención', () => {
   ordenes.enviarComanda(orden.id);
   assert.equal(ordenes.tablero().find((m) => m.id === mesaId)?.orden?.sinEnviar, 0);
 });
+
+/* ── Hallazgos de la prueba de estrés del día festivo ─────────────────── */
+
+test('cancelar una mesa abierta por error no deja una cuenta huérfana bloqueando la caja', () => {
+  const mesaId = nuevaMesa();
+  const orden = ordenes.abrirOrden({ mesaId, comensales: 2 }, mesero.id);
+  ordenes.cancelarOrdenVacia(orden.id, mesero.id);
+
+  // Antes de la corrección, esta cuenta seguía "abierta" con total $0.00 para
+  // siempre, atada a una orden cancelada, y ninguna pantalla podía encontrarla.
+  const huerfana = cuentas.cuentasDeOrden(orden.id);
+  assert.equal(huerfana.length, 0, 'la cuenta de la orden cancelada debe desaparecer, no quedar abierta');
+});
+
+test('el corte de caja no se bloquea por mesas que se cerraron vacías', () => {
+  // Tres meseros abren mesas por error y las cierran, como en un servicio real.
+  // Antes de la corrección, cada una dejaba una cuenta huérfana "abierta" con
+  // $0.00 para siempre, y el corte de caja fallaba con
+  // "Todavía hay N cuenta(s) sin cobrar" sin que existiera ninguna pantalla
+  // desde la cual un administrador pudiera encontrarlas ni repararlas.
+  const ordenesCanceladas = [];
+  for (let i = 0; i < 3; i++) {
+    const orden = ordenes.abrirOrden({ mesaId: nuevaMesa(), comensales: 2 }, mesero.id);
+    ordenes.cancelarOrdenVacia(orden.id, mesero.id);
+    ordenesCanceladas.push(orden.id);
+  }
+
+  for (const ordenId of ordenesCanceladas) {
+    assert.equal(cuentas.cuentasDeOrden(ordenId).length, 0, 'no debe quedar ninguna cuenta abierta atada a la orden cancelada');
+  }
+});
+
+test('mover un platillo a una cuenta de OTRA mesa se rechaza (antes creaba una asociación cruzada)', () => {
+  const mesaA = nuevaMesa();
+  const mesaB = nuevaMesa();
+  const ordenA = ordenes.abrirOrden({ mesaId: mesaA, comensales: 2 }, mesero.id);
+  const ordenB = ordenes.abrirOrden({ mesaId: mesaB, comensales: 2 }, mesero.id);
+  const producto = menu.obtenerMenu().flatMap((c) => c.productos).find((p) => p.nombre === 'Guacamole')!;
+
+  const conLinea = ordenes.agregarLineas(ordenA.id, {
+    lineas: [{ varianteId: producto.variantes[0]!.id, cantidadMilesimas: 1000, nota: '', modificadoresIds: [] }],
+  });
+  const lineaDeA = conLinea.lineas[0]!.id;
+  const [cuentaDeB] = cuentas.cuentasDeOrden(ordenB.id);
+
+  assert.throws(
+    () => cuentas.asignarLinea({ cuentaId: cuentaDeB!.id, lineaId: lineaDeA, proporcionMilesimas: 1000, exclusiva: true }),
+    /no pertenece a esta mesa/,
+  );
+});
+
+test('repartir un platillo entre cuentas de OTRA mesa también se rechaza', () => {
+  const mesaA = nuevaMesa();
+  const mesaB = nuevaMesa();
+  const ordenA = ordenes.abrirOrden({ mesaId: mesaA, comensales: 2 }, mesero.id);
+  const ordenB = ordenes.abrirOrden({ mesaId: mesaB, comensales: 2 }, mesero.id);
+  const producto = menu.obtenerMenu().flatMap((c) => c.productos).find((p) => p.nombre === 'Guacamole')!;
+
+  const conLinea = ordenes.agregarLineas(ordenA.id, {
+    lineas: [{ varianteId: producto.variantes[0]!.id, cantidadMilesimas: 1000, nota: '', modificadoresIds: [] }],
+  });
+  const lineaDeA = conLinea.lineas[0]!.id;
+  const [cuentaDeB] = cuentas.cuentasDeOrden(ordenB.id);
+
+  assert.throws(
+    () => cuentas.repartirLinea({ lineaId: lineaDeA, cuentaIds: [cuentaDeB!.id] }),
+    /no pertenece a esta mesa/,
+  );
+});
+
+test('la pantalla de cocina no acumula comandas de mesas ya cobradas o canceladas', () => {
+  const mesaId = nuevaMesa();
+  const orden = ordenes.abrirOrden({ mesaId, comensales: 2 }, mesero.id);
+  const producto = menu.obtenerMenu().flatMap((c) => c.productos).find((p) => p.nombre === 'Guacamole')!;
+  ordenes.agregarLineas(orden.id, {
+    lineas: [{ varianteId: producto.variantes[0]!.id, cantidadMilesimas: 1000, nota: '', modificadoresIds: [] }],
+  });
+  ordenes.enviarComanda(orden.id);
+
+  const antesDeCobrar = ordenes.comandasPendientes().length;
+  assert.ok(antesDeCobrar > 0, 'la comanda debe verse mientras la mesa sigue en servicio');
+
+  const [cuenta] = cuentas.cuentasDeOrden(orden.id);
+  cuentas.cobrar(cuenta!.id, { pagos: [{ metodo: 'efectivo', montoCentavos: cuenta!.totalCentavos, referencia: '' }] }, admin.id);
+
+  // Nadie va a tocar "listo" en una comanda de una mesa que ya se cobró y se fue.
+  const trasCobrar = ordenes.comandasPendientes();
+  assert.equal(trasCobrar.length, antesDeCobrar - 1, 'la comanda de la mesa cobrada debe desaparecer del tablero de cocina');
+});

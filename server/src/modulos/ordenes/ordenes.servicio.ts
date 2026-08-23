@@ -266,7 +266,10 @@ export function enviarComanda(ordenId: number, claveIdempotencia?: string) {
   });
 }
 
-/** Lo que ve la pantalla de cocina: comandas sin marcar como listas. */
+/** Lo que ve la pantalla de cocina: comandas sin marcar como listas.
+ *  Se excluyen las de mesas ya cobradas o canceladas: nadie marca "listo" un
+ *  platillo de una mesa que ya se fue, y sin este filtro el tablero de cocina
+ *  se llena de comandas de servicios pasados en cuanto pasan un par de horas. */
 export function comandasPendientes(estacion?: 'cocina' | 'barra') {
   const filas = db
     .select({
@@ -280,7 +283,11 @@ export function comandasPendientes(estacion?: 'cocina' | 'barra') {
     .innerJoin(ordenes, eq(ordenes.id, comandas.ordenId))
     .innerJoin(mesas, eq(mesas.id, ordenes.mesaId))
     .innerJoin(usuarios, eq(usuarios.id, ordenes.meseroId))
-    .where(estacion ? and(isNull(comandas.listaEn), eq(comandas.estacion, estacion)) : isNull(comandas.listaEn))
+    .where(
+      estacion
+        ? and(isNull(comandas.listaEn), eq(comandas.estacion, estacion), eq(ordenes.estado, 'abierta'))
+        : and(isNull(comandas.listaEn), eq(ordenes.estado, 'abierta')),
+    )
     .orderBy(asc(comandas.enviadaEn))
     .all();
 
@@ -521,6 +528,13 @@ export function cancelarOrdenVacia(ordenId: number, usuarioId: number) {
 
     tx.update(ordenes).set({ estado: 'cancelada', cerradaEn: sql`(datetime('now'))` }).where(eq(ordenes.id, ordenId)).run();
     tx.update(mesas).set({ estado: 'libre' }).where(eq(mesas.id, orden.mesaId)).run();
+
+    // Toda orden nace con una cuenta (ver abrirOrden). Si no se elimina aquí,
+    // queda "abierta" y con $0.00 para siempre, atada a una orden cancelada que
+    // nadie va a volver a tocar — y bloquea el cierre de caja sin que exista
+    // ninguna pantalla desde la que un admin pueda encontrarla o repararla.
+    tx.delete(cuentas).where(eq(cuentas.ordenId, ordenId)).run();
+
     registrar(usuarioId, 'orden_vacia_cancelada', 'orden', ordenId, `mesa ${orden.mesaId}`);
     return { ok: true };
   });
