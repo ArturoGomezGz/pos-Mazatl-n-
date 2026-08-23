@@ -1,4 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { reiniciarDemo } from './api/apiSimulada';
 import { useSesion } from './estado/Sesion';
 import { AdminConfig } from './paginas/AdminConfig';
 import { AdminMenu } from './paginas/AdminMenu';
@@ -45,6 +46,20 @@ export function App() {
 
   return (
     <div className="app">
+      {import.meta.env.VITE_MOCK === '1' && (
+        <div className="aviso-demo">
+          <span>
+            <strong>Modo demo.</strong> Esta versión corre sin servidor: los datos viven en tu navegador y no
+            se comparten con nadie más. Recarga para seguir donde ibas, o reinicia si quieres el comedor de ejemplo.
+          </span>
+          <button
+            className="btn chico fantasma"
+            onClick={() => confirm('¿Reiniciar el demo? Se pierde todo lo capturado en esta sesión.') && reiniciarDemo()}
+          >
+            Reiniciar demo
+          </button>
+        </div>
+      )}
       <header className="encabezado">
         <h1>
           <span className="marca">{config.negocio_nombre ?? 'Mariscos Mazatlán'}</span>

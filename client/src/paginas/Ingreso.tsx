@@ -42,6 +42,12 @@ export function Ingreso() {
       <div className="ingreso-tarjeta">
         <h1>Mariscos Mazatlán</h1>
 
+        {import.meta.env.VITE_MOCK === '1' && (
+          <p className="ingreso-demo">
+            Modo demo — sin servidor real. Elige a cualquiera del equipo para probar la aplicación.
+          </p>
+        )}
+
         {!elegido ? (
           <>
             <p className="ingreso-guia">¿Quién eres?</p>

@@ -88,4 +88,5 @@ docs/      Diseño del producto: alcance, requerimientos, arquitectura, roadmap
 | [`docs/06-roadmap.md`](docs/06-roadmap.md) | Entregas por fases, riesgos e insumos requeridos |
 | [`docs/07-menu-flexible.md`](docs/07-menu-flexible.md) | Los cuatro estilos de venta y el estilo visual configurable |
 | [`docs/08-prueba-de-estres-festivo.md`](docs/08-prueba-de-estres-festivo.md) | Prueba de estrés de día festivo: hallazgos, correcciones y decisiones estratégicas |
+| [`docs/09-demo-github-pages.md`](docs/09-demo-github-pages.md) | Cómo funciona y se publica la demo sin servidor en GitHub Pages |
 | [`docs/adr/0001-stack-tecnologico.md`](docs/adr/0001-stack-tecnologico.md) | Decisión de stack y alternativas descartadas |

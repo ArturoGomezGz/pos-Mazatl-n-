@@ -1,0 +1,60 @@
+name: Publicar demo en GitHub Pages
+
+# Publica una versión de solo demostración del cliente: sin servidor real
+# detrás, con una API simulada que corre en el navegador del visitante.
+# El sistema real del restaurante (server + client contra la API de verdad)
+# no se toca ni se despliega aquí.
+on:
+  push:
+    branches:
+      - main
+      - claude/mariscos-mazatlan-pos-7p8rzu
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar el cliente en modo demo
+        run: npm run build:mock --workspace client
+
+      - name: Habilitar rutas del cliente (React Router) en GitHub Pages
+        # GitHub Pages no reescribe rutas del lado del cliente: sin este
+        # archivo, recargar en /orden/5 o compartir ese enlace da 404.
+        # Copiar index.html como 404.html es el mecanismo estándar para
+        # que Pages sirva la aplicación completa en cualquier ruta.
+        run: cp client/dist/index.html client/dist/404.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: client/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

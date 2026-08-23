@@ -570,3 +570,19 @@ button, input, select { font: inherit; color: inherit; }
   .rejilla-productos.vista-cuadricula { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .producto-nombre { font-size: 15px; }
 }
+
+/* ── Aviso de modo demo (solo en el build de GitHub Pages) ─────────────── */
+
+.aviso-demo {
+  display: flex; align-items: center; gap: 14px;
+  padding: 8px 16px; background: #3a2a08; color: #ffe6a8;
+  font-size: 13px; line-height: 1.4;
+}
+.aviso-demo strong { color: #ffd166; }
+.aviso-demo .btn { flex-shrink: 0; color: #ffe6a8; border-color: rgba(255,230,168,0.4); }
+.aviso-demo .btn:hover { background: rgba(255,230,168,0.12); }
+
+.ingreso-demo {
+  background: #3a2a08; color: #ffe6a8; border-radius: var(--radio);
+  padding: 8px 12px; font-size: 13px; margin: -6px 0 14px;
+}

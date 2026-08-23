@@ -20,12 +20,8 @@ import type {
   Zona,
 } from '../tipos';
 
-export class ErrorApi extends Error {
-  constructor(message: string, public readonly estado: number, public readonly detalle?: unknown) {
-    super(message);
-    this.name = 'ErrorApi';
-  }
-}
+export { ErrorApi } from './errores';
+import { ErrorApi } from './errores';
 
 const CLAVE_TOKEN = 'pos.token';
 
@@ -82,7 +78,7 @@ export const nuevaClave = () =>
 
 type Geometria = { x: number; y: number; ancho: number; alto: number; rotacion: number };
 
-export const api = {
+const apiReal = {
   /* ── Sesión ─────────────────────────────────────────────────────── */
   usuariosActivos: () => peticion<Usuario[]>('/auth/usuarios-activos'),
   ingresar: (usuarioId: number, pin: string) =>
@@ -250,3 +246,12 @@ export const api = {
   config: () => peticion<Config>('/config'),
   guardarConfig: (cambios: Config) => peticion<Config>('/config', { method: 'PUT', ...json(cambios) }),
 };
+
+/* ── Selección de implementación ────────────────────────────────────────
+   GitHub Pages solo sirve archivos estáticos: ahí no hay servidor real, así
+   que el build de demo (`npm run build:mock`) usa la API simulada en el
+   navegador. El build normal (`npm run build`) sigue hablando con el
+   servidor real: nada de esto afecta al sistema que usa el restaurante. */
+import { apiSimulada } from './apiSimulada';
+
+export const api = import.meta.env.VITE_MOCK === '1' ? apiSimulada : apiReal;
