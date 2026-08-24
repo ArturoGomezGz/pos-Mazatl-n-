@@ -1,6 +1,9 @@
 import cors from 'cors';
 import express from 'express';
 import morgan from 'morgan';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { manejadorErrores, rutaNoEncontrada } from './http/errores.js';
 import { rutasAuth } from './modulos/auth/auth.rutas.js';
@@ -28,6 +31,18 @@ export function crearApp() {
   app.use('/api/caja', rutasCaja);
   app.use('/api/reportes', rutasReportes);
   app.use('/api/config', rutasConfig);
+
+  // Sirve el build del cliente cuando existe (deploy de un solo servicio, p. ej. Railway).
+  // En desarrollo el cliente corre aparte con Vite, así que esta carpeta no existe.
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const distCliente = path.resolve(__dirname, '../../client/dist');
+  if (fs.existsSync(distCliente)) {
+    app.use(express.static(distCliente));
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
+      res.sendFile(path.join(distCliente, 'index.html'));
+    });
+  }
 
   app.use(rutaNoEncontrada);
   app.use(manejadorErrores);
