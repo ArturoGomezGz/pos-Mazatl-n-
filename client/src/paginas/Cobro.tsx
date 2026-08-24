@@ -31,8 +31,8 @@ export function Cobro() {
   const [mostrarCobro, setMostrarCobro] = useState(false);
   const [separando, setSeparando] = useState<Separacion>(null);
   const [partes, setPartes] = useState(2);
-  const [pasando, setPasando] = useState<number | null>(null);
-  const [repartiendo, setRepartiendo] = useState<number | null>(null);
+  const [pasando, setPasando] = useState<GrupoLinea | null>(null);
+  const [repartiendo, setRepartiendo] = useState<GrupoLinea | null>(null);
   const [descuentoBorrador, setDescuentoBorrador] = useState<{ tipo: 'monto' | 'porcentaje'; valor: number } | null>(null);
   const [pidiendoDescuento, setPidiendoDescuento] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +71,18 @@ export function Cobro() {
   const efectivoInsuficiente = metodo === 'efectivo' && recibidoCentavos > 0 && recibidoCentavos < restante;
   const abiertas = cuentas.filter((c) => c.estado === 'abierta');
   const separada = cuentas.length > 1;
+  // Solo dividirEnPartesIguales deja a todas las cuentas abiertas con exactamente
+  // el mismo consumo: es la única forma confiable de saber que estamos en ese modo
+  // sin agregar un campo nuevo en la base de datos.
+  const modoIgual =
+    separada &&
+    abiertas.length > 1 &&
+    (abiertas[0]?.lineas.length ?? 0) > 0 &&
+    abiertas.every((c) => {
+      const ref = new Set(abiertas[0]!.lineas.map((l) => l.id));
+      const propios = new Set(c.lineas.map((l) => l.id));
+      return propios.size === ref.size && [...propios].every((idLinea) => ref.has(idLinea));
+    });
 
   const dividirIgual = (n: number) =>
     accion(async () => {
@@ -88,16 +100,18 @@ export function Cobro() {
       setSeparando(null);
     });
 
-  const pasarLinea = (lineaId: number, destinoId: number) =>
+  const moverGrupo = (lineaIds: number[], cantidadMilesimas: number, destinoId: number) =>
     accion(async () => {
-      setCuentas(await api.asignarLinea(destinoId, lineaId));
+      setCuentas(await api.moverUnidades(lineaIds, cantidadMilesimas, destinoId));
       setPasando(null);
       setPagos([]);
     });
 
-  const repartirLinea = (lineaId: number, cuentaIds: number[]) =>
+  const repartirGrupo = (lineaIds: number[], cuentaIds: number[]) =>
     accion(async () => {
-      setCuentas(await api.repartirLinea(lineaId, cuentaIds));
+      let resultado = cuentas;
+      for (const lineaId of lineaIds) resultado = await api.repartirLinea(lineaId, cuentaIds);
+      setCuentas(resultado);
       setRepartiendo(null);
       setPagos([]);
     });
@@ -201,26 +215,26 @@ export function Cobro() {
             </h2>
 
             {cuenta.lineas.length === 0 && <p className="tenue">Sin consumo asignado.</p>}
-            {cuenta.lineas.map((l) => (
-              <div key={l.id} className="linea">
+            {agruparLineas(cuenta.lineas, cuentas).map((g) => (
+              <div key={g.clave} className="linea">
                 <div className="linea-datos">
                   <span className="linea-cantidad">
-                    {cantidadLegible(l.cantidadMilesimas, l.unidad)}
+                    {cantidadLegible(g.cantidadMilesimas, g.unidad)}
                   </span>
                   <span className="linea-nombre">
-                    {l.productoNombre}
-                    {l.varianteNombre && <em> · {l.varianteNombre}</em>}
-                    {l.esCortesia && <small className="nota">cortesía</small>}
-                    {(l.cuentaIds?.length ?? 1) > 1 && <small>compartido entre {l.cuentaIds!.length}</small>}
+                    {g.productoNombre}
+                    {g.varianteNombre && <em> · {g.varianteNombre}</em>}
+                    {g.esCortesia && <small className="nota">cortesía</small>}
+                    {g.compartida && <small>compartido</small>}
                   </span>
                   <span className="linea-importe">
-                    {pesos(importeEnCuenta(l, cuentas))}
+                    {pesos(g.importeCentavos)}
                   </span>
                 </div>
-                {cuenta.estado === 'abierta' && separada && (
+                {cuenta.estado === 'abierta' && separada && !modoIgual && (
                   <div className="linea-acciones">
-                    <button className="btn chico fantasma" onClick={() => setPasando(l.id)}>Pasar a…</button>
-                    <button className="btn chico fantasma" onClick={() => setRepartiendo(l.id)}>Repartir…</button>
+                    <button className="btn chico fantasma" onClick={() => setPasando(g)}>Pasar a…</button>
+                    <button className="btn chico fantasma" onClick={() => setRepartiendo(g)}>Repartir…</button>
                   </div>
                 )}
               </div>
@@ -388,7 +402,7 @@ export function Cobro() {
             Cada quien lo que pidió
             <small>Se crean cuentas y repartes los platillos</small>
           </button>
-          {separada && (
+          {separada && !modoIgual && (
             <button className="btn grande" onClick={() => setSeparando('repartir')}>
               Repartir un platillo compartido
               <small>La botana que pidieron entre todos</small>
@@ -403,10 +417,21 @@ export function Cobro() {
           titulo={separando === 'iguales' ? 'Partes iguales' : 'Cada quien lo que pidió'}
           onCerrar={() => setSeparando(null)}
           ancho={420}
+          pie={
+            <div className="acciones-dialogo">
+              <button className="btn" onClick={() => setSeparando('menu')}>Atrás</button>
+              <button
+                className="btn primario"
+                onClick={() => (separando === 'iguales' ? dividirIgual(partes) : crearCuentasVacias(partes))}
+              >
+                {separando === 'iguales' ? `Dividir entre ${partes}` : `Crear ${partes} cuentas`}
+              </button>
+            </div>
+          }
         >
           <p className="detalle-dialogo">
             {separando === 'iguales'
-              ? 'El total se divide en partes exactas. Sirve cuando compartieron todo.'
+              ? 'El total se divide en partes exactas y todas ven la misma cuenta: no se pueden mover platillos entre ellas.'
               : 'Se crean las cuentas vacías y después pasas cada platillo a la suya con “Pasar a…”.'}
           </p>
           <div className="contador grande">
@@ -414,52 +439,51 @@ export function Cobro() {
             <span className="contador-valor">{partes}</span>
             <button className="btn" onClick={() => setPartes((p) => Math.min(20, p + 1))}>+</button>
           </div>
-          <div className="acciones-dialogo">
-            <button className="btn" onClick={() => setSeparando('menu')}>Atrás</button>
-            <button
-              className="btn primario"
-              onClick={() => (separando === 'iguales' ? dividirIgual(partes) : crearCuentasVacias(partes))}
-            >
-              {separando === 'iguales' ? `Dividir entre ${partes}` : `Crear ${partes} cuentas`}
-            </button>
-          </div>
         </Dialogo>
       )}
 
       {pasando !== null && (
-        <Dialogo titulo="Pasar a otra cuenta" onCerrar={() => setPasando(null)} ancho={380}>
-          <p className="detalle-dialogo">El platillo completo se mueve a la cuenta que elijas.</p>
-          <div className="opciones">
-            {abiertas.map((c) => (
-              <button key={c.id} className="opcion" onClick={() => pasarLinea(pasando, c.id)}>
-                {c.nombre}
-              </button>
-            ))}
-          </div>
-        </Dialogo>
+        <PasarPlatillo
+          grupo={pasando}
+          abiertas={abiertas}
+          onCerrar={() => setPasando(null)}
+          onMover={(cantidadMilesimas, destinoId) => moverGrupo(pasando.lineaIds, cantidadMilesimas, destinoId)}
+        />
       )}
 
       {repartiendo !== null && (
         <RepartirPlatillo
           cuentas={abiertas}
           onCerrar={() => setRepartiendo(null)}
-          onRepartir={(ids) => repartirLinea(repartiendo, ids)}
+          onRepartir={(ids) => repartirGrupo(repartiendo.lineaIds, ids)}
         />
       )}
 
       {separando === 'repartir' && (
-        <Dialogo titulo="Repartir un platillo" onCerrar={() => setSeparando(null)} ancho={420}>
+        <Dialogo
+          titulo="Repartir un platillo"
+          onCerrar={() => setSeparando(null)}
+          ancho={420}
+          pie={<div className="acciones-dialogo"><button className="btn primario" onClick={() => setSeparando(null)}>Entendido</button></div>}
+        >
           <p className="detalle-dialogo">
             Toca “Repartir…” junto al platillo compartido en el ticket y elige entre qué cuentas se divide.
           </p>
-          <div className="acciones-dialogo">
-            <button className="btn primario" onClick={() => setSeparando(null)}>Entendido</button>
-          </div>
         </Dialogo>
       )}
 
       {descuentoBorrador && !pidiendoDescuento && (
-        <Dialogo titulo="Descuento" onCerrar={() => setDescuentoBorrador(null)} ancho={420}>
+        <Dialogo
+          titulo="Descuento"
+          onCerrar={() => setDescuentoBorrador(null)}
+          ancho={420}
+          pie={
+            <div className="acciones-dialogo">
+              <button className="btn" onClick={() => setDescuentoBorrador(null)}>Cancelar</button>
+              <button className="btn primario" onClick={() => setPidiendoDescuento(true)}>Continuar</button>
+            </div>
+          }
+        >
           <div className="opciones">
             {[10, 15, 20, 50].map((p) => (
               <button
@@ -481,10 +505,6 @@ export function Cobro() {
               onChange={(e) => setDescuentoBorrador({ tipo: 'monto', valor: Math.round(Number(e.target.value) * 100) })}
             />
           </div>
-          <div className="acciones-dialogo">
-            <button className="btn" onClick={() => setDescuentoBorrador(null)}>Cancelar</button>
-            <button className="btn primario" onClick={() => setPidiendoDescuento(true)}>Continuar</button>
-          </div>
         </Dialogo>
       )}
 
@@ -504,6 +524,54 @@ export function Cobro() {
   );
 }
 
+/** Mueve un platillo (o varias piezas de uno) a otra cuenta. Solo pregunta
+ *  cuántas piezas cuando de verdad hay más de una y son piezas enteras: partir
+ *  un platillo por peso (kg) no tiene el mismo sentido. */
+function PasarPlatillo({
+  grupo,
+  abiertas,
+  onCerrar,
+  onMover,
+}: {
+  grupo: GrupoLinea;
+  abiertas: Cuenta[];
+  onCerrar: () => void;
+  onMover: (cantidadMilesimas: number, destinoId: number) => void;
+}) {
+  const totalUnidades = Math.round(grupo.cantidadMilesimas / 1000);
+  const permiteParcial = grupo.unidad === 'pieza' && totalUnidades > 1;
+  const [unidades, setUnidades] = useState(1);
+
+  return (
+    <Dialogo titulo="Pasar a otra cuenta" onCerrar={onCerrar} ancho={380}>
+      {permiteParcial ? (
+        <>
+          <p className="detalle-dialogo">¿Cuántas de {totalUnidades} “{grupo.productoNombre}” se mueven?</p>
+          <div className="contador grande">
+            <button className="btn" onClick={() => setUnidades((u) => Math.max(1, u - 1))}>−</button>
+            <span className="contador-valor">{unidades}</span>
+            <button className="btn" onClick={() => setUnidades((u) => Math.min(totalUnidades, u + 1))}>+</button>
+          </div>
+        </>
+      ) : (
+        <p className="detalle-dialogo">El platillo completo se mueve a la cuenta que elijas.</p>
+      )}
+      <p className="detalle-dialogo">¿A qué cuenta?</p>
+      <div className="opciones">
+        {abiertas.map((c) => (
+          <button
+            key={c.id}
+            className="opcion"
+            onClick={() => onMover(permiteParcial ? unidades * 1000 : grupo.cantidadMilesimas, c.id)}
+          >
+            {c.nombre}
+          </button>
+        ))}
+      </div>
+    </Dialogo>
+  );
+}
+
 /** Un platillo compartido se divide entre las cuentas que lo comieron. */
 function RepartirPlatillo({
   cuentas,
@@ -517,7 +585,19 @@ function RepartirPlatillo({
   const [elegidas, setElegidas] = useState<Set<number>>(new Set(cuentas.map((c) => c.id)));
 
   return (
-    <Dialogo titulo="Repartir entre…" onCerrar={onCerrar} ancho={400}>
+    <Dialogo
+      titulo="Repartir entre…"
+      onCerrar={onCerrar}
+      ancho={400}
+      pie={
+        <div className="acciones-dialogo">
+          <button className="btn" onClick={onCerrar}>Cancelar</button>
+          <button className="btn primario" disabled={elegidas.size === 0} onClick={() => onRepartir([...elegidas])}>
+            Repartir entre {elegidas.size}
+          </button>
+        </div>
+      }
+    >
       <p className="detalle-dialogo">El importe se divide en partes exactas entre las cuentas que marques.</p>
       <div className="opciones">
         {cuentas.map((c) => (
@@ -537,12 +617,6 @@ function RepartirPlatillo({
           </button>
         ))}
       </div>
-      <div className="acciones-dialogo">
-        <button className="btn" onClick={onCerrar}>Cancelar</button>
-        <button className="btn primario" disabled={elegidas.size === 0} onClick={() => onRepartir([...elegidas])}>
-          Repartir entre {elegidas.size}
-        </button>
-      </div>
     </Dialogo>
   );
 }
@@ -551,4 +625,46 @@ function RepartirPlatillo({
 function importeEnCuenta(linea: { id: number; totalCentavos: number; cuentaIds?: number[] }, cuentas: Cuenta[]): number {
   const compartida = cuentas.filter((c) => c.lineas.some((l) => l.id === linea.id)).length || 1;
   return Math.round(linea.totalCentavos / compartida);
+}
+
+interface GrupoLinea {
+  clave: string;
+  productoNombre: string;
+  varianteNombre: string;
+  esCortesia: boolean;
+  unidad: string;
+  cantidadMilesimas: number;
+  importeCentavos: number;
+  lineaIds: number[];
+  compartida: boolean;
+}
+
+/** Agrupa las líneas del ticket por platillo: si se pidieron 2 cocas y luego
+ *  1 más, se ven como "3 Coca" en vez de dos renglones separados. */
+function agruparLineas(lineas: Cuenta['lineas'], cuentas: Cuenta[]): GrupoLinea[] {
+  const mapa = new Map<string, GrupoLinea>();
+  for (const l of lineas) {
+    const clave = `${l.productoId ?? l.productoNombre}|${l.varianteNombre}|${l.esCortesia}|${l.nota}`;
+    const importe = importeEnCuenta(l, cuentas);
+    const existente = mapa.get(clave);
+    if (existente) {
+      existente.cantidadMilesimas += l.cantidadMilesimas;
+      existente.importeCentavos += importe;
+      existente.lineaIds.push(l.id);
+      existente.compartida = existente.compartida || (l.cuentaIds?.length ?? 1) > 1;
+    } else {
+      mapa.set(clave, {
+        clave,
+        productoNombre: l.productoNombre,
+        varianteNombre: l.varianteNombre,
+        esCortesia: l.esCortesia,
+        unidad: l.unidad,
+        cantidadMilesimas: l.cantidadMilesimas,
+        importeCentavos: importe,
+        lineaIds: [l.id],
+        compartida: (l.cuentaIds?.length ?? 1) > 1,
+      });
+    }
+  }
+  return [...mapa.values()].map((g) => ({ ...g, lineaIds: [...g.lineaIds].sort((a, b) => a - b) }));
 }

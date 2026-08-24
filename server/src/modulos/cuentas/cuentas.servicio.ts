@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { db } from '../../db/cliente.js';
-import { cuentaLineas, cuentas, mesas, ordenLineas, ordenes, pagos } from '../../db/esquema.js';
+import { cuentaLineas, cuentas, lineaModificadores, mesas, ordenLineas, ordenes, pagos } from '../../db/esquema.js';
 import { conflicto, invalido, noEncontrado } from '../../http/errores.js';
 import { autorizar, registrar } from '../auth/auth.servicio.js';
 import { exigirTurnoAbierto } from '../caja/caja.servicio.js';
@@ -12,6 +12,7 @@ import type * as E from './cuentas.esquemas.js';
 
 type Asignacion = z.infer<typeof E.asignacion>;
 type Reparto = z.infer<typeof E.reparto>;
+type Movimiento = z.infer<typeof E.movimiento>;
 type Descuento = z.infer<typeof E.descuento>;
 type Cobro = z.infer<typeof E.cobro>;
 type Reapertura = z.infer<typeof E.reapertura>;
@@ -70,6 +71,12 @@ export function calcularCuenta(cuentaId: number) {
 export function cuentasDeOrden(ordenId: number) {
   const lineas = lineasDeOrden(ordenId);
   const filas = db.select().from(cuentas).where(eq(cuentas.ordenId, ordenId)).orderBy(asc(cuentas.id)).all();
+  const todasLasAsignaciones = db
+    .select({ cuentaId: cuentaLineas.cuentaId, lineaId: cuentaLineas.lineaId })
+    .from(cuentaLineas)
+    .innerJoin(cuentas, eq(cuentas.id, cuentaLineas.cuentaId))
+    .where(eq(cuentas.ordenId, ordenId))
+    .all();
 
   return filas.map((c) => {
     const actualizada = c.estado === 'abierta' ? calcularCuenta(c.id) : c;
@@ -79,7 +86,9 @@ export function cuentasDeOrden(ordenId: number) {
       lineas: asignadas
         .map((a) => {
           const linea = lineas.find((l) => l.id === a.lineaId);
-          return linea ? { ...linea, proporcionMilesimas: a.proporcionMilesimas } : null;
+          if (!linea) return null;
+          const cuentaIds = todasLasAsignaciones.filter((x) => x.lineaId === a.lineaId).map((x) => x.cuentaId);
+          return { ...linea, proporcionMilesimas: a.proporcionMilesimas, cuentaIds };
         })
         .filter((l): l is NonNullable<typeof l> => Boolean(l)),
       pagos: db.select().from(pagos).where(eq(pagos.cuentaId, c.id)).orderBy(asc(pagos.id)).all(),
@@ -183,6 +192,77 @@ export function repartirLinea(datos: Reparto) {
       tx.insert(cuentaLineas).values({ cuentaId: destino.id, lineaId: datos.lineaId, proporcionMilesimas: 1000 }).run();
     }
     return cuentasDeOrden(ordenId);
+  });
+}
+
+/** Mueve N unidades (milesimas) de un grupo de líneas a otra cuenta, de a una si
+ *  hace falta: si una línea no cabe entera en lo que falta por mover, se parte
+ *  en dos (la parte movida se vuelve una línea nueva, exclusiva del destino). */
+export function moverUnidades(datos: Movimiento) {
+  return db.transaction((tx) => {
+    const destino = tx.select().from(cuentas).where(eq(cuentas.id, datos.cuentaDestinoId)).get();
+    if (!destino) throw noEncontrado('Cuenta');
+    if (destino.estado !== 'abierta') throw conflicto('Esa cuenta ya fue cobrada');
+
+    const lineas = tx.select().from(ordenLineas).where(inArray(ordenLineas.id, datos.lineaIds)).all();
+    if (lineas.length !== datos.lineaIds.length) throw noEncontrado('Línea');
+    if (lineas.some((l) => l.ordenId !== destino.ordenId)) throw conflicto('Ese platillo no pertenece a esta mesa');
+
+    const disponible = lineas.reduce((a, l) => a + l.cantidadMilesimas, 0);
+    if (datos.cantidadMilesimas > disponible) throw invalido('No hay esa cantidad para mover');
+
+    // Se procesan en el orden recibido: primero se agotan las líneas más
+    // viejas antes de partir la última que haga falta.
+    const ordenadas = [...lineas].sort((a, b) => datos.lineaIds.indexOf(a.id) - datos.lineaIds.indexOf(b.id));
+
+    let restante = datos.cantidadMilesimas;
+    for (const linea of ordenadas) {
+      if (restante <= 0) break;
+
+      const mover = Math.min(linea.cantidadMilesimas, restante);
+      const lineaMovidaId =
+        mover === linea.cantidadMilesimas
+          ? linea.id
+          : tx
+              .insert(ordenLineas)
+              .values({
+                ordenId: linea.ordenId,
+                comandaId: linea.comandaId,
+                productoId: linea.productoId,
+                varianteId: linea.varianteId,
+                productoNombre: linea.productoNombre,
+                varianteNombre: linea.varianteNombre,
+                estacion: linea.estacion,
+                unidad: linea.unidad,
+                precioUnitarioCentavos: linea.precioUnitarioCentavos,
+                cantidadMilesimas: mover,
+                nota: linea.nota,
+                estado: linea.estado,
+                esCortesia: linea.esCortesia,
+              })
+              .returning({ id: ordenLineas.id })
+              .get().id;
+
+      if (mover !== linea.cantidadMilesimas) {
+        // La línea original se queda con lo que no se movió.
+        tx.update(ordenLineas).set({ cantidadMilesimas: linea.cantidadMilesimas - mover }).where(eq(ordenLineas.id, linea.id)).run();
+
+        const modificadores = tx.select().from(lineaModificadores).where(eq(lineaModificadores.lineaId, linea.id)).all();
+        for (const m of modificadores) {
+          tx.insert(lineaModificadores)
+            .values({ lineaId: lineaMovidaId, modificadorId: m.modificadorId, nombre: m.nombre, precioExtraCentavos: m.precioExtraCentavos })
+            .run();
+        }
+      }
+
+      // La porción movida queda exclusiva del destino.
+      tx.delete(cuentaLineas).where(eq(cuentaLineas.lineaId, lineaMovidaId)).run();
+      tx.insert(cuentaLineas).values({ cuentaId: destino.id, lineaId: lineaMovidaId, proporcionMilesimas: 1000 }).run();
+
+      restante -= mover;
+    }
+
+    return cuentasDeOrden(destino.ordenId);
   });
 }
 

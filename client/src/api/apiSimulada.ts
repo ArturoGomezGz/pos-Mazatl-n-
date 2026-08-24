@@ -1151,6 +1151,38 @@ export const apiSimulada = {
     persistir();
     return cuentasDeOrden(cuenta.ordenId);
   },
+  moverUnidades: async (lineaIds: number[], cantidadMilesimas: number, cuentaDestinoId: number) => {
+    await esperar();
+    const destino = A.cuentas.find((c) => c.id === cuentaDestinoId);
+    if (!destino) throw new ErrorApi('Cuenta no encontrada', 404);
+    if (destino.estado !== 'abierta') throw new ErrorApi('Esa cuenta ya fue cobrada', 409);
+    const lineas = lineaIds.map((id) => A.lineas.find((l) => l.id === id)).filter((l): l is LineaInterna => Boolean(l));
+    if (lineas.length !== lineaIds.length) throw new ErrorApi('Línea no encontrada', 404);
+    if (lineas.some((l) => l.ordenId !== destino.ordenId)) throw new ErrorApi('Ese platillo no pertenece a esta mesa', 409);
+    const disponible = lineas.reduce((a, l) => a + l.cantidadMilesimas, 0);
+    if (cantidadMilesimas > disponible) throw new ErrorApi('No hay esa cantidad para mover', 400);
+
+    let restante = cantidadMilesimas;
+    for (const linea of lineas) {
+      if (restante <= 0) break;
+      const mover = Math.min(linea.cantidadMilesimas, restante);
+      let lineaMovidaId = linea.id;
+      if (mover !== linea.cantidadMilesimas) {
+        const nueva: LineaInterna = { ...linea, id: nuevoId(), cantidadMilesimas: mover };
+        A.lineas.push(nueva);
+        lineaMovidaId = nueva.id;
+        linea.cantidadMilesimas -= mover;
+        for (const m of A.lineaModificadores.filter((x) => x.lineaId === linea.id)) {
+          A.lineaModificadores.push({ id: nuevoId(), lineaId: nueva.id, modificadorId: m.modificadorId, nombre: m.nombre, precioExtraCentavos: m.precioExtraCentavos });
+        }
+      }
+      A.cuentaLineas = A.cuentaLineas.filter((cl) => cl.lineaId !== lineaMovidaId);
+      A.cuentaLineas.push({ cuentaId: destino.id, lineaId: lineaMovidaId, proporcionMilesimas: 1000 });
+      restante -= mover;
+    }
+    persistir();
+    return cuentasDeOrden(destino.ordenId);
+  },
   repartirLinea: async (lineaId: number, cuentaIds: number[]) => {
     await esperar();
     const destinos = A.cuentas.filter((c) => cuentaIds.includes(c.id));

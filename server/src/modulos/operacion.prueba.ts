@@ -357,6 +357,34 @@ test('mover un platillo a una cuenta de OTRA mesa se rechaza (antes creaba una a
   );
 });
 
+test('mover unidades parte una línea de 3 piezas en 1 y 2 sin perder consumo', () => {
+  const mesaId = nuevaMesa();
+  const orden = ordenes.abrirOrden({ mesaId, comensales: 2 }, mesero.id);
+  const producto = menu.obtenerMenu().flatMap((c) => c.productos).find((p) => p.nombre === 'Guacamole')!;
+
+  // Simula el caso real: 2 cocas pedidas juntas y luego 1 más por separado.
+  const conLineas = ordenes.agregarLineas(orden.id, {
+    lineas: [
+      { varianteId: producto.variantes[0]!.id, cantidadMilesimas: 2000, nota: '', modificadoresIds: [] },
+      { varianteId: producto.variantes[0]!.id, cantidadMilesimas: 1000, nota: '', modificadoresIds: [] },
+    ],
+  });
+  const lineaIds = conLineas.lineas.map((l) => l.id);
+
+  const c2 = cuentas.crearCuenta(orden.id, 'Cuenta 2');
+  const c1 = cuentas.cuentasDeOrden(orden.id)[0]!;
+
+  // Mueve 1 de las 3 piezas: debe partir la línea de 2 y dejar 1 en cada cuenta.
+  const movidas = cuentas.moverUnidades({ lineaIds, cantidadMilesimas: 1000, cuentaDestinoId: c2.id });
+  const cuenta1 = movidas.find((c) => c.id === c1.id)!;
+  const cuenta2 = movidas.find((c) => c.id === c2.id)!;
+
+  const unidadesEn = (lineas: { cantidadMilesimas: number }[]) => lineas.reduce((a, l) => a + l.cantidadMilesimas, 0) / 1000;
+  assert.equal(unidadesEn(cuenta1.lineas), 2, 'la cuenta original conserva 2 piezas');
+  assert.equal(unidadesEn(cuenta2.lineas), 1, 'la cuenta destino recibe 1 pieza');
+  assert.equal(unidadesEn(cuenta1.lineas) + unidadesEn(cuenta2.lineas), 3, 'no se pierde ni se duplica consumo');
+});
+
 test('repartir un platillo entre cuentas de OTRA mesa también se rechaza', () => {
   const mesaA = nuevaMesa();
   const mesaB = nuevaMesa();

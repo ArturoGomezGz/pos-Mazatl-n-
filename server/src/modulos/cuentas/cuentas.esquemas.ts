@@ -23,6 +23,14 @@ export const reparto = z.object({
   cuentaIds: z.array(z.number().int().positive()).min(1).max(20),
 });
 
+/** Mover N unidades (en milesimas) de un grupo de líneas a otra cuenta: si una
+ *  línea no cabe entera en lo que falta por mover, se parte en dos. */
+export const movimiento = z.object({
+  lineaIds: z.array(z.number().int().positive()).min(1).max(50),
+  cantidadMilesimas: z.number().int().positive().max(1_000_000),
+  cuentaDestinoId: z.number().int().positive(),
+});
+
 export const division = z.object({
   partes: z.number().int().min(2).max(20),
 });

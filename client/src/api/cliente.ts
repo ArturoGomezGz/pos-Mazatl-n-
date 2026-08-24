@@ -198,6 +198,8 @@ const apiReal = {
     peticion<Cuenta[]>('/cuentas/repartir', { method: 'POST', ...json({ lineaId, cuentaIds }) }),
   asignarLinea: (cuentaId: number, lineaId: number, proporcionMilesimas = 1000) =>
     peticion<Cuenta[]>('/cuentas/asignar', { method: 'POST', ...json({ cuentaId, lineaId, proporcionMilesimas, exclusiva: true }) }),
+  moverUnidades: (lineaIds: number[], cantidadMilesimas: number, cuentaDestinoId: number) =>
+    peticion<Cuenta[]>('/cuentas/mover', { method: 'POST', ...json({ lineaIds, cantidadMilesimas, cuentaDestinoId }) }),
   dividirEnPartes: (ordenId: number, partes: number) =>
     peticion<Cuenta[]>(`/cuentas/orden/${ordenId}/dividir`, { method: 'POST', ...json({ partes }) }),
   aplicarDescuento: (cuentaId: number, datos: { tipo: 'monto' | 'porcentaje'; valor: number; motivo: string; pinAutorizacion: string }) =>

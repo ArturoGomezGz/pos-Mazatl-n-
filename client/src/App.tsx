@@ -68,22 +68,24 @@ export function App() {
         </div>
       )}
       <header className="encabezado">
-        <h1>
-          <span className="marca">{config.negocio_nombre ?? 'Mariscos Mazatlán'}</span>
-        </h1>
-        <nav className="navegacion">
+        <div className="encabezado__superior">
+          <h1>
+            <span className="marca">{config.negocio_nombre ?? 'Mariscos Mazatlán'}</span>
+          </h1>
+          <div className="sesion">
+            <span>
+              {usuario.nombre} <small>{ETIQUETAS_ROL[usuario.rol]}</small>
+            </span>
+            <button className="btn chico" onClick={salir}>Salir</button>
+          </div>
+        </div>
+        <nav className="encabezado__nav">
           {enlaces.map((e) => (
             <NavLink key={e.ruta} to={e.ruta} className={({ isActive }) => (isActive ? 'activo' : '')}>
               {e.texto}
             </NavLink>
           ))}
         </nav>
-        <div className="sesion">
-          <span>
-            {usuario.nombre} <small>{ETIQUETAS_ROL[usuario.rol]}</small>
-          </span>
-          <button className="btn chico" onClick={salir}>Salir</button>
-        </div>
       </header>
 
       <Routes>
