@@ -62,15 +62,14 @@ se hacen editando `.railway/railway.ts` y aplicando con `railway config plan`
 5. Primer deploy: Railway corre `npm run build` y luego `npm run start`. Al
    arrancar, el servidor **migra y siembra la base de datos automáticamente**
    (`server/src/index.ts` llama a `migrar()` y luego a `sembrar()`), así que la
-   primera vez crea las tablas y el equipo/menú/comedor de ejemplo solo, sin
+   primera vez crea las tablas y el usuario administrador inicial solo, sin
    necesidad de correr nada a mano ni tener la CLI de Railway instalada.
    `sembrar()` (`server/src/db/semilla.ts`) es idempotente: revisa si ya hay
    datos antes de insertar, así que en cada reinicio o redeploy posterior no
    duplica nada — se puede llamar en cada arranque sin riesgo.
 6. Abre el dominio que Railway asigna (o el dominio propio que configures) y
-   entra con cualquiera de los PINs de `docs/09-demo-github-pages.md` /
-   `README.md` para verificar el flujo completo: Mis mesas → tomar orden →
-   enviar comanda → cocina → cobrar → caja.
+   entra con el PIN `1234` del administrador (ver `README.md`) para dar de
+   alta al resto del equipo, el comedor y el menú desde la app.
 
 ## Notas
 
