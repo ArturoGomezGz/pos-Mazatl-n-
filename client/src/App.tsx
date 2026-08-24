@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { reiniciarDemo } from './api/apiSimulada';
 import { useSesion } from './estado/Sesion';
@@ -20,6 +21,85 @@ interface Enlace {
   ruta: string;
   texto: string;
   roles: Rol[];
+}
+
+function iniciales(nombre: string): string {
+  return nombre.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('');
+}
+
+/** Botón de cuenta: reemplaza el bloque nombre+rol+Salir del header por un
+ *  avatar con iniciales que despliega esa misma información, para no competir
+ *  por espacio horizontal con el título del negocio en pantallas angostas. */
+function MenuCuenta({ nombre, rolEtiqueta, onSalir }: { nombre: string; rolEtiqueta: string; onSalir: () => void }) {
+  const [abierto, setAbierto] = useState(false);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  const botonSalirRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!abierto) return;
+    botonSalirRef.current?.focus();
+
+    const alClickFuera = (e: MouseEvent | TouchEvent) => {
+      if (contenedorRef.current && !contenedorRef.current.contains(e.target as Node)) setAbierto(false);
+    };
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setAbierto(false);
+        contenedorRef.current?.querySelector<HTMLButtonElement>('.cuenta__boton')?.focus();
+      }
+    };
+    document.addEventListener('mousedown', alClickFuera);
+    document.addEventListener('touchstart', alClickFuera);
+    document.addEventListener('keydown', alTeclear);
+    return () => {
+      document.removeEventListener('mousedown', alClickFuera);
+      document.removeEventListener('touchstart', alClickFuera);
+      document.removeEventListener('keydown', alTeclear);
+    };
+  }, [abierto]);
+
+  return (
+    <div className="cuenta" ref={contenedorRef}>
+      <button
+        type="button"
+        className="cuenta__boton"
+        aria-haspopup="menu"
+        aria-expanded={abierto}
+        aria-controls="menu-cuenta"
+        aria-label={`Cuenta de ${nombre}`}
+        onClick={() => setAbierto((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setAbierto(true);
+          }
+        }}
+      >
+        {iniciales(nombre)}
+      </button>
+      {abierto && (
+        <div className="cuenta__menu" id="menu-cuenta" role="menu">
+          <div className="cuenta__info">
+            <span className="cuenta__nombre">{nombre}</span>
+            <small className="cuenta__rol">{rolEtiqueta}</small>
+          </div>
+          <hr className="cuenta__separador" />
+          <button
+            type="button"
+            role="menuitem"
+            className="btn peligro cuenta__salir"
+            ref={botonSalirRef}
+            onClick={() => {
+              setAbierto(false);
+              onSalir();
+            }}
+          >
+            Salir
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** La navegación cambia según el rol: el mesero no necesita ver reportes y la
@@ -72,12 +152,7 @@ export function App() {
           <h1>
             <span className="marca">{config.negocio_nombre ?? 'Mariscos Mazatlán'}</span>
           </h1>
-          <div className="sesion">
-            <span>
-              {usuario.nombre} <small>{ETIQUETAS_ROL[usuario.rol]}</small>
-            </span>
-            <button className="btn chico" onClick={salir}>Salir</button>
-          </div>
+          <MenuCuenta nombre={usuario.nombre} rolEtiqueta={ETIQUETAS_ROL[usuario.rol]} onSalir={salir} />
         </div>
         <nav className="encabezado__nav">
           {enlaces.map((e) => (
