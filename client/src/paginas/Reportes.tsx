@@ -59,18 +59,18 @@ export function Reportes() {
 
       {error && <div className="aviso">{error}</div>}
 
-      {ventas && (
-        <div className="tarjetas">
-          <Tarjeta titulo="Venta" valor={pesos(ventas.ventasCentavos)} destacada />
-          <Tarjeta titulo="Cuentas" valor={String(ventas.cuentas ?? 0)} />
-          <Tarjeta titulo="Ticket promedio" valor={pesos(ventas.ticketPromedioCentavos)} />
-          <Tarjeta titulo="Propinas" valor={pesos(ventas.propinasCentavos)} />
-          <Tarjeta titulo="Descuentos" valor={pesos(ventas.descuentosCentavos)} />
-          <Tarjeta titulo="IVA" valor={pesos(ventas.impuestosCentavos)} />
-        </div>
-      )}
-
       <div className="cuerpo bloques">
+        {ventas && (
+          <div className="tarjetas">
+            <Tarjeta titulo="Venta" valor={pesos(ventas.ventasCentavos)} destacada />
+            <Tarjeta titulo="Cuentas" valor={String(ventas.cuentas ?? 0)} />
+            <Tarjeta titulo="Ticket promedio" valor={pesos(ventas.ticketPromedioCentavos)} />
+            <Tarjeta titulo="Propinas" valor={pesos(ventas.propinasCentavos)} />
+            <Tarjeta titulo="Descuentos" valor={pesos(ventas.descuentosCentavos)} />
+            <Tarjeta titulo="IVA" valor={pesos(ventas.impuestosCentavos)} />
+          </div>
+        )}
+
         <section className="bloque">
           <h2>Más vendidos</h2>
           <table className="tabla">

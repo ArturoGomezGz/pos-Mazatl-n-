@@ -97,16 +97,16 @@ export function Caja() {
 
       {error && <div className="aviso">{error}</div>}
 
-      <div className="tarjetas">
-        <Tarjeta titulo="Ventas del turno" valor={pesos(resumen.ventasCentavos)} detalle={`${resumen.cuentasCobradas} cuenta(s)`} />
-        <Tarjeta titulo="Efectivo esperado" valor={pesos(resumen.esperadoEfectivoCentavos)} detalle="lo que debe haber en el cajón" destacada />
-        <Tarjeta titulo="Propinas" valor={pesos(resumen.propinasCentavos)} />
-        <Tarjeta titulo="Descuentos" valor={pesos(resumen.descuentosCentavos)} />
-        <Tarjeta titulo="Fondo inicial" valor={pesos(resumen.turno.fondoInicialCentavos)} />
-        <Tarjeta titulo="Entradas / salidas" valor={`${pesos(resumen.entradasCentavos)} / ${pesos(resumen.salidasCentavos)}`} />
-      </div>
-
       <div className="cuerpo bloques">
+        <div className="tarjetas">
+          <Tarjeta titulo="Ventas del turno" valor={pesos(resumen.ventasCentavos)} detalle={`${resumen.cuentasCobradas} cuenta(s)`} />
+          <Tarjeta titulo="Efectivo esperado" valor={pesos(resumen.esperadoEfectivoCentavos)} detalle="lo que debe haber en el cajón" destacada />
+          <Tarjeta titulo="Propinas" valor={pesos(resumen.propinasCentavos)} />
+          <Tarjeta titulo="Descuentos" valor={pesos(resumen.descuentosCentavos)} />
+          <Tarjeta titulo="Fondo inicial" valor={pesos(resumen.turno.fondoInicialCentavos)} />
+          <Tarjeta titulo="Entradas / salidas" valor={`${pesos(resumen.entradasCentavos)} / ${pesos(resumen.salidasCentavos)}`} />
+        </div>
+
         <section className="bloque">
           <h2>Cobrado por método</h2>
           <table className="tabla">

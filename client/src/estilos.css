@@ -393,7 +393,7 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ── Tarjetas, tablas y bloques ───────────────────────────────────── */
 
-.tarjetas { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); padding: 16px; }
+.tarjetas { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); margin-bottom: 16px; }
 .tarjeta { background: var(--blanco); border: 1px solid var(--borde); border-radius: var(--radio); padding: 14px; display: flex; flex-direction: column; gap: 4px; }
 .tarjeta.destacada { border-color: var(--mar); background: var(--mar-claro); }
 .tarjeta-titulo { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--tinta-suave); font-weight: 700; }
@@ -559,7 +559,7 @@ button, input, select { font: inherit; color: inherit; }
   .barra { padding: 8px 10px; gap: 6px; }
   .barra strong { font-size: 15px; }
 
-  .tarjetas { grid-template-columns: 1fr 1fr; padding: 12px; gap: 10px; }
+  .tarjetas { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
   .cuerpo.bloques { padding: 12px; }
   .bloque { padding: 12px; }
   .tabla th, .tabla td { padding: 8px 6px; font-size: 14px; }
