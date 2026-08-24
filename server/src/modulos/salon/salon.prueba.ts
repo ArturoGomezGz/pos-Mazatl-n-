@@ -55,6 +55,18 @@ test('el guardado por lote persiste las posiciones', () => {
   );
 });
 
+test('no se puede borrar una mesa con historial de ventas (aunque la orden ya esté cobrada)', async () => {
+  const { db } = await import('../../db/cliente.js');
+  const { ordenes, usuarios } = await import('../../db/esquema.js');
+
+  const zona = salon.crearZona({ nombre: 'Con historial' });
+  const mesa = salon.crearMesa({ zonaId: zona.id, nombre: 'H-1', capacidad: 4, forma: 'cuadrada', x: 0, y: 0, ancho: 100, alto: 100, rotacion: 0 }, layoutId);
+  const mesero = db.insert(usuarios).values({ nombre: 'Mesero historial', rol: 'mesero', pinHash: 'x' }).returning().get();
+  db.insert(ordenes).values({ folio: 1, mesaId: mesa.id, meseroId: mesero.id, estado: 'cobrada' }).run();
+
+  assert.throws(() => salon.eliminarMesa(mesa.id), /historial de ventas/);
+});
+
 test('copiar una distribución conserva las posiciones del original', () => {
   const copia = salon.crearLayout({ nombre: 'Temporada alta', copiarDeId: layoutId });
   const original = salon.obtenerPlano(layoutId).zonas[0]!.mesas[0]!;
@@ -116,7 +128,7 @@ test('no se puede reducir una barra si un lugar a quitar tiene una cuenta abiert
   const lugar2 = salon.obtenerPlano(layoutId).zonas.find((z) => z.id === zona.id)!.mesas.find((m) => m.barraId === barra.id && m.numeroLugar === 2)!;
 
   const mesero = db.insert(usuarios).values({ nombre: 'Mesero prueba', rol: 'mesero', pinHash: 'x' }).returning().get();
-  db.insert(ordenes).values({ folio: 1, mesaId: lugar2.id, meseroId: mesero.id, estado: 'abierta' }).run();
+  db.insert(ordenes).values({ folio: 2, mesaId: lugar2.id, meseroId: mesero.id, estado: 'abierta' }).run();
 
   assert.throws(() => salon.actualizarBarra(barra.id, { lugares: 1 }, layoutId), /cuenta abierta/);
 });

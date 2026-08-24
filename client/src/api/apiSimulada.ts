@@ -477,6 +477,12 @@ function ordenAbiertaDeMesa(mesaId: number): OrdenInterna | undefined {
   return A.ordenes.find((o) => o.mesaId === mesaId && o.estado === 'abierta');
 }
 
+/** Una mesa con algún historial de órdenes (abiertas o ya cobradas) no se
+ *  borra de verdad, igual que en el servidor real. */
+function tieneHistorial(mesaId: number): boolean {
+  return A.ordenes.some((o) => o.mesaId === mesaId);
+}
+
 function lineasDeOrden(ordenId: number) {
   return A.lineas
     .filter((l) => l.ordenId === ordenId)
@@ -766,6 +772,7 @@ export const apiSimulada = {
     await esperar();
     const m = mesaInterna(id);
     if (m.barraId != null) throw new ErrorApi('Este lugar pertenece a una barra: elimina o reduce la barra completa.', 409);
+    if (tieneHistorial(id)) throw new ErrorApi('Esta mesa ya tiene historial de ventas: no se puede eliminar. Desactívala en su lugar ("Mesa en uso").', 409);
     A.mesas = A.mesas.filter((x) => x.id !== id);
     A.posiciones = A.posiciones.filter((p) => p.mesaId !== id);
     persistir();
@@ -797,6 +804,9 @@ export const apiSimulada = {
         if (aQuitar.some((m) => ordenAbiertaDeMesa(m.id))) {
           throw new ErrorApi('No se puede reducir la barra: hay una cuenta abierta en un lugar que se eliminaría.', 409);
         }
+        if (aQuitar.some((m) => tieneHistorial(m.id))) {
+          throw new ErrorApi('No se puede reducir la barra: un lugar que se eliminaría ya tiene historial de ventas. Desactiva la barra en vez de reducirla.', 409);
+        }
         A.mesas = A.mesas.filter((m) => !aQuitar.includes(m));
       } else {
         for (let i = b.lugares + 1; i <= cambios.lugares; i++) {
@@ -825,6 +835,9 @@ export const apiSimulada = {
     const lugares = A.mesas.filter((m) => m.barraId === id);
     if (lugares.some((m) => ordenAbiertaDeMesa(m.id))) {
       throw new ErrorApi('No se puede eliminar la barra: hay una cuenta abierta en alguno de sus lugares.', 409);
+    }
+    if (lugares.some((m) => tieneHistorial(m.id))) {
+      throw new ErrorApi('No se puede eliminar la barra: alguno de sus lugares ya tiene historial de ventas. Desactívala en su lugar.', 409);
     }
     A.mesas = A.mesas.filter((m) => m.barraId !== id);
     A.barras = A.barras.filter((x) => x.id !== id);

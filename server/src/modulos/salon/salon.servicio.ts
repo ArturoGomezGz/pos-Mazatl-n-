@@ -349,13 +349,27 @@ export function obtenerMesa(id: number, layoutId: number) {
   return fila;
 }
 
+/** Mesas con algún historial de órdenes (abiertas o ya cobradas). Una mesa así
+ *  nunca se borra de verdad: la FK de `ordenes.mesa_id` lo impediría igual,
+ *  pero con un error de SQLite crudo en vez de un mensaje que el mesero entienda. */
+function conHistorial(mesaIds: number[]): number[] {
+  if (!mesaIds.length) return [];
+  return db
+    .select({ mesaId: ordenes.mesaId })
+    .from(ordenes)
+    .where(inArray(ordenes.mesaId, mesaIds))
+    .all()
+    .map((o) => o.mesaId);
+}
+
 export function eliminarMesa(id: number) {
   const mesa = db.select({ barraId: mesas.barraId }).from(mesas).where(eq(mesas.id, id)).get();
   if (!mesa) throw noEncontrado('Mesa');
   if (mesa.barraId != null) throw conflicto('Este lugar pertenece a una barra: elimina o reduce la barra completa.');
+  if (conHistorial([id]).length) {
+    throw conflicto('Esta mesa ya tiene historial de ventas: no se puede eliminar. Desactívala en su lugar ("Mesa en uso").');
+  }
 
-  // Cuando existan órdenes, esto pasará a ser baja lógica (`activa = false`):
-  // una mesa con historial de ventas nunca se borra (ver docs/04-modelo-de-datos.md).
   const borrada = db.delete(mesas).where(eq(mesas.id, id)).returning().get();
   if (!borrada) throw noEncontrado('Mesa');
   return borrada;
@@ -444,8 +458,9 @@ export function actualizarBarra(id: number, cambios: BarraCambio, layoutId: numb
           .from(mesas)
           .where(and(eq(mesas.barraId, id), gt(mesas.numeroLugar, cambios.lugares)))
           .all();
-        const ocupados = conOrdenAbierta(aQuitar.map((m) => m.id));
-        if (ocupados.length) throw conflicto('No se puede reducir la barra: hay una cuenta abierta en un lugar que se eliminaría.');
+        const idsAQuitar = aQuitar.map((m) => m.id);
+        if (conOrdenAbierta(idsAQuitar).length) throw conflicto('No se puede reducir la barra: hay una cuenta abierta en un lugar que se eliminaría.');
+        if (conHistorial(idsAQuitar).length) throw conflicto('No se puede reducir la barra: un lugar que se eliminaría ya tiene historial de ventas. Desactiva la barra en vez de reducirla.');
         tx.delete(mesas).where(and(eq(mesas.barraId, id), gt(mesas.numeroLugar, cambios.lugares))).run();
       } else {
         for (let i = barra.lugares + 1; i <= cambios.lugares; i++) {
@@ -472,9 +487,11 @@ export function actualizarBarra(id: number, cambios: BarraCambio, layoutId: numb
 
 export function eliminarBarra(id: number) {
   return db.transaction((tx) => {
-    const lugares = tx.select({ id: mesas.id }).from(mesas).where(eq(mesas.barraId, id)).all();
-    const ocupados = conOrdenAbierta(lugares.map((m) => m.id));
-    if (ocupados.length) throw conflicto('No se puede eliminar la barra: hay una cuenta abierta en alguno de sus lugares.');
+    const idsLugares = tx.select({ id: mesas.id }).from(mesas).where(eq(mesas.barraId, id)).all().map((m) => m.id);
+    if (conOrdenAbierta(idsLugares).length) throw conflicto('No se puede eliminar la barra: hay una cuenta abierta en alguno de sus lugares.');
+    if (conHistorial(idsLugares).length) {
+      throw conflicto('No se puede eliminar la barra: alguno de sus lugares ya tiene historial de ventas. Desactívala en su lugar.');
+    }
     const borrada = tx.delete(barras).where(eq(barras.id, id)).returning().get();
     if (!borrada) throw noEncontrado('Barra');
     return borrada;
