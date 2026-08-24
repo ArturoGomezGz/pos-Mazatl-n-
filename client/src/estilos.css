@@ -527,6 +527,10 @@ button, input, select { font: inherit; color: inherit; }
   /* Lo que era un panel lateral fijo se apila: en 390 px no hay dos columnas. */
   .cuerpo { flex-direction: column; }
   .panel, .panel.ancho, .panel.comanda, .panel.cobro { width: 100%; border-left: none; border-right: none; }
+  /* El panel lateral ya no es una columna fija: si su contenido es largo (categorias,
+     ajustes), debe poder encogerse y desplazarse por su cuenta sin robarle todo el
+     alto a la tabla o al plano de al lado. */
+  .panel:not(.comanda):not(.cobro) { flex-shrink: 1; max-height: 38vh; }
   .columna-cuenta { padding: 12px; }
   .ticket { max-width: none; }
 
