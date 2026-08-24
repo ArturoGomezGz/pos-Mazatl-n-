@@ -307,6 +307,21 @@ test('el tablero del mesero muestra lo que reclama atención', () => {
   assert.equal(ordenes.tablero().find((m) => m.id === mesaId)?.orden?.sinEnviar, 0);
 });
 
+test('el tablero ordena los lugares de una barra por número, no alfabéticamente (B-x-2 antes que B-x-10)', () => {
+  const zona = salon.crearZona({ nombre: 'Barra tablero' });
+  const barra = salon.crearBarra({ zonaId: zona.id, lugares: 11, x: 0, y: 0, ancho: 1100, alto: 70, rotacion: 0 }, layoutId);
+
+  const nombres = ordenes
+    .tablero()
+    .filter((m) => m.nombre.startsWith(`B-${barra.numero}-`))
+    .map((m) => m.nombre);
+
+  assert.deepEqual(
+    nombres,
+    Array.from({ length: 11 }, (_, i) => `B-${barra.numero}-${i + 1}`),
+  );
+});
+
 /* ── Hallazgos de la prueba de estrés del día festivo ─────────────────── */
 
 test('cancelar una mesa abierta por error no deja una cuenta huérfana bloqueando la caja', () => {

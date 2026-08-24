@@ -441,7 +441,16 @@ export function tablero() {
     .from(mesas)
     .innerJoin(zonas, eq(zonas.id, mesas.zonaId))
     .where(eq(mesas.activa, true))
-    .orderBy(asc(zonas.orden), asc(mesas.nombre))
+    // Los lugares de una barra (B-1-1, B-1-2…, B-1-10) no se pueden ordenar por
+    // nombre: "10" queda antes que "2" alfabéticamente. Se agrupan por barra y
+    // se ordenan por su número de lugar; el resto de las mesas, por nombre.
+    .orderBy(
+      asc(zonas.orden),
+      sql`case when ${mesas.barraId} is null then 0 else 1 end`,
+      asc(mesas.barraId),
+      asc(mesas.numeroLugar),
+      asc(mesas.nombre),
+    )
     .all();
 
   const abiertas = db

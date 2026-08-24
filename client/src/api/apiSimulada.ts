@@ -1065,6 +1065,20 @@ export const apiSimulada = {
     await esperar();
     return A.mesas
       .filter((m) => m.activa)
+      // Los lugares de una barra (B-1-1, B-1-2…, B-1-10) no se pueden ordenar
+      // por nombre: "10" queda antes que "2" alfabéticamente. Se agrupan por
+      // barra y se ordenan por su número de lugar; el resto, por nombre.
+      .sort((a, b) => {
+        const zonaA = A.zonas.find((z) => z.id === a.zonaId)!.orden;
+        const zonaB = A.zonas.find((z) => z.id === b.zonaId)!.orden;
+        if (zonaA !== zonaB) return zonaA - zonaB;
+        const grupoA = a.barraId == null ? 0 : 1;
+        const grupoB = b.barraId == null ? 0 : 1;
+        if (grupoA !== grupoB) return grupoA - grupoB;
+        if (grupoA === 0) return a.nombre.localeCompare(b.nombre);
+        if (a.barraId !== b.barraId) return a.barraId! - b.barraId!;
+        return (a.numeroLugar ?? 0) - (b.numeroLugar ?? 0);
+      })
       .map((m) => {
         const zona = A.zonas.find((z) => z.id === m.zonaId)!;
         const orden = ordenAbiertaDeMesa(m.id);
@@ -1081,8 +1095,7 @@ export const apiSimulada = {
             cuentasAbiertas, vacia: lineas.length === 0,
           },
         };
-      })
-      .sort((a, b) => a.zonaOrden - b.zonaOrden);
+      });
   },
   pedirCuenta: async (ordenId: number) => {
     await esperar();
