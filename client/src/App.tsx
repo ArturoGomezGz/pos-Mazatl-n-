@@ -80,8 +80,11 @@ function MenuCuenta({ nombre, rolEtiqueta, onSalir }: { nombre: string; rolEtiqu
       {abierto && (
         <div className="cuenta__menu" id="menu-cuenta" role="menu">
           <div className="cuenta__info">
-            <span className="cuenta__nombre">{nombre}</span>
-            <small className="cuenta__rol">{rolEtiqueta}</small>
+            <span className="cuenta__avatar" aria-hidden="true">{iniciales(nombre)}</span>
+            <span className="cuenta__datos">
+              <span className="cuenta__nombre">{nombre}</span>
+              <small className="cuenta__rol">{rolEtiqueta}</small>
+            </span>
           </div>
           <hr className="cuenta__separador" />
           <button
