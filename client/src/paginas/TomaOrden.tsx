@@ -5,7 +5,7 @@ import { DialogoProducto, type LineaCapturada } from '../componentes/DialogoProd
 import { MenuVenta } from '../componentes/MenuVenta';
 import { PedirAutorizacion } from '../componentes/PedirAutorizacion';
 import { useSesion } from '../estado/Sesion';
-import { cantidadLegible, leerEstiloMenu, pesos, type Categoria, type Linea, type Orden, type Producto } from '../tipos';
+import { cantidadLegible, leerEstiloMenu, pesos, type Categoria, type Linea, type Mesa, type Orden, type Producto } from '../tipos';
 
 export function TomaOrden() {
   const { mesaId } = useParams();
@@ -14,8 +14,11 @@ export function TomaOrden() {
   const estilo = leerEstiloMenu(config);
 
   const [orden, setOrden] = useState<Orden | null>(null);
+  const [mesa, setMesa] = useState<Mesa | null>(null);
   const [menu, setMenu] = useState<Categoria[]>([]);
   const [comensales, setComensales] = useState(2);
+  // Un lugar de barra es para una sola persona: no tiene caso preguntar.
+  const esLugarDeBarra = mesa?.forma === 'barra';
   const [eligiendo, setEligiendo] = useState<Producto | null>(null);
   const [cancelando, setCancelando] = useState<Linea | null>(null);
   const [mostrarOrden, setMostrarOrden] = useState(false);
@@ -28,9 +31,10 @@ export function TomaOrden() {
   const cargar = useCallback(async () => {
     setCargando(true);
     try {
-      const [existente, catalogo] = await Promise.all([api.ordenDeMesa(idMesa), api.menu()]);
+      const [existente, catalogo, mesaInfo] = await Promise.all([api.ordenDeMesa(idMesa), api.menu(), api.mesa(idMesa)]);
       setOrden(existente);
       setMenu(catalogo);
+      setMesa(mesaInfo);
       setError(null);
     } catch (e) {
       setError(e instanceof ErrorApi ? e.message : 'No se pudo cargar la mesa');
@@ -52,7 +56,7 @@ export function TomaOrden() {
     }
   }
 
-  const abrirMesa = () => accion(async () => setOrden(await api.abrirOrden(idMesa, comensales)));
+  const abrirMesa = () => accion(async () => setOrden(await api.abrirOrden(idMesa, esLugarDeBarra ? 1 : comensales)));
 
   const agregar = (linea: LineaCapturada) =>
     accion(async () => {
@@ -115,13 +119,19 @@ export function TomaOrden() {
     return (
       <div className="contenido">
         <div className="panel-central">
-          <h2>Abrir mesa</h2>
-          <p className="detalle-dialogo">¿Cuántas personas se sientan?</p>
-          <div className="contador grande">
-            <button className="btn" onClick={() => setComensales((c) => Math.max(1, c - 1))}>−</button>
-            <span className="contador-valor">{comensales}</span>
-            <button className="btn" onClick={() => setComensales((c) => Math.min(40, c + 1))}>+</button>
-          </div>
+          <h2>Abrir {esLugarDeBarra ? 'lugar de barra' : 'mesa'}</h2>
+          {esLugarDeBarra ? (
+            <p className="detalle-dialogo">Un lugar de barra es para una persona.</p>
+          ) : (
+            <>
+              <p className="detalle-dialogo">¿Cuántas personas se sientan?</p>
+              <div className="contador grande">
+                <button className="btn" onClick={() => setComensales((c) => Math.max(1, c - 1))}>−</button>
+                <span className="contador-valor">{comensales}</span>
+                <button className="btn" onClick={() => setComensales((c) => Math.min(40, c + 1))}>+</button>
+              </div>
+            </>
+          )}
           {error && <div className="aviso">{error}</div>}
           <div className="acciones-dialogo">
             <button className="btn" onClick={() => navegar('/mesas')}>Volver</button>

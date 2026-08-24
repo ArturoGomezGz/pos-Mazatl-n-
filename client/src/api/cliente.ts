@@ -112,6 +112,7 @@ const apiReal = {
 
   crearMesa: (datos: Partial<Mesa> & { zonaId: number; nombre: string }, layoutId?: number) =>
     peticion<Mesa>(conLayout('/salon/mesas', layoutId), { method: 'POST', ...json(datos) }),
+  mesa: (id: number, layoutId?: number) => peticion<Mesa>(conLayout(`/salon/mesas/${id}`, layoutId)),
   actualizarMesa: (id: number, cambios: Partial<Mesa>, layoutId?: number) =>
     peticion<Mesa>(conLayout(`/salon/mesas/${id}`, layoutId), { method: 'PATCH', ...json(cambios) }),
   cambiarEstadoMesa: (id: number, estado: EstadoMesa) =>

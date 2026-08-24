@@ -741,6 +741,7 @@ export const apiSimulada = {
     persistir();
     return mesaComoDTO(m, lid);
   },
+  mesa: async (id: number, layoutId?: number) => { await esperar(); return mesaComoDTO(mesaInterna(id), layoutId ?? layoutActivo().id); },
   actualizarMesa: async (id: number, cambios: Partial<Mesa>, layoutId?: number) => {
     await esperar();
     const m = mesaInterna(id);

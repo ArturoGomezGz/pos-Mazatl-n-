@@ -61,6 +61,12 @@ rutasSalon.post('/mesas', soloAdmin, (req, res) => {
   res.status(201).json(salon.crearMesa(validar(E.mesaNueva, req.body), layoutDeConsulta(req)));
 });
 
+/** Detalle de una mesa: lo usa la toma de orden para saber, por ejemplo, si es
+ *  un lugar de barra (una sola persona, sin selector de comensales). */
+rutasSalon.get('/mesas/:id', (req, res) => {
+  res.json(salon.obtenerMesa(idDeRuta(req.params.id), layoutDeConsulta(req)));
+});
+
 /** El estado de la mesa (ocupada, por limpiar, libre) lo mueve el piso, no el dueño.
  *  El resto de los atributos —nombre, capacidad, forma, posición— es configuración. */
 rutasSalon.post('/mesas/:id/estado', (req, res) => {
