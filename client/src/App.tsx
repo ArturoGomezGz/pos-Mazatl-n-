@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { reiniciarDemo } from './api/apiSimulada';
 import { useSesion } from './estado/Sesion';
@@ -44,6 +45,12 @@ export function App() {
   const enlaces = ENLACES.filter((e) => e.roles.includes(usuario.rol));
   const inicio = usuario.rol === 'cocina' ? '/cocina' : '/mesas';
 
+  // Guarda de ruta: si el usuario activo no tiene el rol requerido, lo manda a
+  // su inicio en vez de renderizar la página. Sin esto, la URL de una sesión
+  // anterior (o tecleada a mano) puede exponer una vista ajena a su rol.
+  const protegida = (roles: Rol[], elemento: ReactElement) =>
+    roles.includes(usuario.rol) ? elemento : <Navigate to={inicio} replace />;
+
   return (
     <div className="app">
       {import.meta.env.VITE_MOCK === '1' && (
@@ -81,18 +88,18 @@ export function App() {
 
       <Routes>
         <Route path="/" element={<Navigate to={inicio} replace />} />
-        <Route path="/mesas" element={<MisMesas />} />
-        <Route path="/mapa" element={<MapaConsulta />} />
+        <Route path="/mesas" element={protegida(['admin', 'cajero', 'mesero'], <MisMesas />)} />
+        <Route path="/mapa" element={protegida(['admin', 'cajero', 'mesero'], <MapaConsulta />)} />
         <Route path="/salon" element={<Navigate to="/mesas" replace />} />
-        <Route path="/orden/:mesaId" element={<TomaOrden />} />
-        <Route path="/cobro/:ordenId" element={<Cobro />} />
-        <Route path="/cocina" element={<Cocina />} />
-        <Route path="/caja" element={<Caja />} />
-        <Route path="/menu" element={<AdminMenu />} />
-        <Route path="/comedor" element={<EditorPlano />} />
-        <Route path="/reportes" element={<Reportes />} />
-        <Route path="/equipo" element={<AdminUsuarios />} />
-        <Route path="/configuracion" element={<AdminConfig />} />
+        <Route path="/orden/:mesaId" element={protegida(['admin', 'cajero', 'mesero'], <TomaOrden />)} />
+        <Route path="/cobro/:ordenId" element={protegida(['admin', 'cajero', 'mesero'], <Cobro />)} />
+        <Route path="/cocina" element={protegida(['admin', 'cajero', 'cocina', 'mesero'], <Cocina />)} />
+        <Route path="/caja" element={protegida(['admin', 'cajero'], <Caja />)} />
+        <Route path="/menu" element={protegida(['admin'], <AdminMenu />)} />
+        <Route path="/comedor" element={protegida(['admin'], <EditorPlano />)} />
+        <Route path="/reportes" element={protegida(['admin', 'cajero'], <Reportes />)} />
+        <Route path="/equipo" element={protegida(['admin'], <AdminUsuarios />)} />
+        <Route path="/configuracion" element={protegida(['admin'], <AdminConfig />)} />
         <Route path="*" element={<div className="vacio">Página no encontrada</div>} />
       </Routes>
     </div>

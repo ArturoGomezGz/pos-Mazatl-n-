@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, configurarPerdidaDeSesion, sesionGuardada } from '../api/cliente';
 import type { Config, Rol, Usuario } from '../tipos';
 
@@ -18,6 +19,7 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [config, setConfig] = useState<Config>({});
   const [cargando, setCargando] = useState(true);
+  const navegar = useNavigate();
 
   const recargarConfig = useCallback(async () => {
     setConfig(await api.config());
@@ -53,6 +55,9 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
         sesionGuardada.guardar(token);
         setUsuario(entrante);
         await recargarConfig();
+        // Arranca siempre desde el inicio: evita que quede visible, aunque sea
+        // un instante, la última vista del usuario anterior.
+        navegar('/', { replace: true });
       },
       salir: async () => {
         try {
@@ -60,12 +65,13 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
         } finally {
           sesionGuardada.borrar();
           setUsuario(null);
+          navegar('/', { replace: true });
         }
       },
       recargarConfig,
       puede: (...roles) => Boolean(usuario && roles.includes(usuario.rol)),
     }),
-    [usuario, config, cargando, recargarConfig],
+    [usuario, config, cargando, recargarConfig, navegar],
   );
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
