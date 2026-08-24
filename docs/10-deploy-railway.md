@@ -20,23 +20,32 @@ Esto lo resuelve `server/src/app.ts`: si existe la carpeta `client/dist` junto
 al servidor, la sirve con `express.static` y responde `index.html` para las
 rutas de React Router (`/mesas`, `/orden/5`, etc.).
 
-`railway.json` en la raíz del repo le dice a Railway:
+`.railway/railway.ts` en la raíz del repo (Infrastructure as Code, sustituyó
+al antiguo `railway.json`) define el servicio `server` para Railway:
 
-- `build.buildCommand`: `npm run build` (compila servidor y cliente).
-- `deploy.startCommand`: `npm run start` (corre `node server/dist/index.js`,
+- `build.buildCommand`: `npm run build --workspace=server` (compila servidor
+  y cliente).
+- `start`: `npm run start --workspace=server` (corre `node server/dist/index.js`,
   que migra la base de datos al arrancar y luego levanta Express).
-- `deploy.healthcheckPath`: `/api/salud`.
+- `healthcheck`: `/api/salud`.
+- `deploy.restartPolicyType`/`restartPolicyMaxRetries`: reinicia hasta 5 veces
+  si el proceso falla.
+- El volumen `server-volume` montado en `/data`.
 
-Railway detecta Node automáticamente (Nixpacks) y usa `package-lock.json` de
-la raíz para instalar dependencias del monorepo (`npm ci`).
+Railway usa Railpack para construir e instala las dependencias del monorepo
+con `package-lock.json` de la raíz (`npm ci`). Cambios a esta configuración
+se hacen editando `.railway/railway.ts` y aplicando con `railway config plan`
+/ `railway config apply`, no a mano en el dashboard.
 
 ## Pasos para desplegar
 
 1. En Railway: **New Project → Deploy from GitHub repo** y elige este
    repositorio (rama a desplegar: la que tenga estos cambios, o `master` una
    vez que se mergeen).
-2. Railway detecta `railway.json` solo; no hace falta tocar el build/start a
-   mano.
+2. Con `.railway/railway.ts` ya presente en el repo, corre `railway config
+   apply` (con el proyecto linkeado vía `railway link`) para que Railway cree
+   el servicio, el volumen y el build/start tal como quedaron definidos; no
+   hace falta tocarlo a mano en el dashboard.
 3. **Agregar un volumen** para que la base de datos sobreviva a los redeploys
    (el sistema de archivos del contenedor es efímero; sin volumen, cada deploy
    borra los datos):
