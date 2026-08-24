@@ -55,6 +55,10 @@ rutasOrdenes.post('/:id/pedir-cuenta', (req, res) => {
   res.json(ordenes.pedirCuenta(idDeRuta(req.params.id), usuarioActual(req).id));
 });
 
+rutasOrdenes.post('/:id/entregar', (req, res) => {
+  res.json(ordenes.marcarEntregado(idDeRuta(req.params.id)));
+});
+
 rutasOrdenes.post('/:id/cancelar-vacia', (req, res) => {
   res.json(ordenes.cancelarOrdenVacia(idDeRuta(req.params.id), usuarioActual(req).id));
 });

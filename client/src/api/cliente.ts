@@ -160,6 +160,7 @@ const apiReal = {
   /* ── Órdenes ────────────────────────────────────────────────────── */
   tablero: () => peticion<MesaTablero[]>('/ordenes/tablero'),
   pedirCuenta: (ordenId: number) => peticion<Orden>(`/ordenes/${ordenId}/pedir-cuenta`, { method: 'POST' }),
+  marcarEntregado: (ordenId: number) => peticion<Orden>(`/ordenes/${ordenId}/entregar`, { method: 'POST' }),
   cancelarMesaVacia: (ordenId: number) =>
     peticion<{ ok: true }>(`/ordenes/${ordenId}/cancelar-vacia`, { method: 'POST' }),
   ordenDeMesa: (mesaId: number) => peticion<Orden | null>(`/ordenes/por-mesa/${mesaId}`),

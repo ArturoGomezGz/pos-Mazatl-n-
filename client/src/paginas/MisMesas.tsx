@@ -86,6 +86,7 @@ export function MisMesas() {
             esMia={!mesa.orden || mesa.orden.meseroId === usuario?.id}
             onEntrar={() => navegar(`/orden/${mesa.id}`)}
             onCobrar={() => mesa.orden && navegar(`/cobro/${mesa.orden.id}`)}
+            onEntregar={() => mesa.orden && accion(async () => { await api.marcarEntregado(mesa.orden!.id); })}
             onLimpiar={() => accion(async () => { await api.cambiarEstadoMesa(mesa.id, 'libre'); })}
             onCancelar={() =>
               accion(async () => {
@@ -128,6 +129,7 @@ function TarjetaMesa({
   esMia,
   onEntrar,
   onCobrar,
+  onEntregar,
   onLimpiar,
   onCancelar,
 }: {
@@ -135,6 +137,7 @@ function TarjetaMesa({
   esMia: boolean;
   onEntrar: () => void;
   onCobrar: () => void;
+  onEntregar: () => void;
   onLimpiar: () => void;
   onCancelar: () => void;
 }) {
@@ -162,6 +165,9 @@ function TarjetaMesa({
       </button>
 
       <div className="tarjeta-mesa-acciones">
+        {urgencia === 'listo' && (
+          <button className="btn chico primario" onClick={onEntregar}>Entregado</button>
+        )}
         {mesa.orden && !mesa.orden.vacia && (
           <button className="btn chico" onClick={onCobrar}>Cuenta</button>
         )}

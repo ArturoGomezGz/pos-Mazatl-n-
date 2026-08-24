@@ -509,6 +509,21 @@ export function pedirCuenta(ordenId: number, usuarioId: number) {
   return obtenerOrden(ordenId);
 }
 
+/** El mesero confirma que ya llevó a la mesa lo que cocina tenía listo. No es
+ *  por platillo: un solo tap limpia toda la señal de "listo" de la mesa. */
+export function marcarEntregado(ordenId: number) {
+  const orden = db.select().from(ordenes).where(eq(ordenes.id, ordenId)).get();
+  if (!orden) throw noEncontrado('Orden');
+  if (orden.estado !== 'abierta') throw conflicto('La orden ya está cerrada');
+
+  db.update(ordenLineas)
+    .set({ estado: 'servida' })
+    .where(and(eq(ordenLineas.ordenId, ordenId), eq(ordenLineas.estado, 'lista')))
+    .run();
+
+  return obtenerOrden(ordenId);
+}
+
 /** Cancela una mesa abierta por error. Solo si no se capturó nada: en cuanto hay
  *  consumo, lo que corresponde es cancelar línea por línea con autorización. */
 export function cancelarOrdenVacia(ordenId: number, usuarioId: number) {

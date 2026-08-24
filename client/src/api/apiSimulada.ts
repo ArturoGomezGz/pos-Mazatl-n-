@@ -950,6 +950,15 @@ export const apiSimulada = {
     persistir();
     return construirOrden(ordenId);
   },
+  marcarEntregado: async (ordenId: number) => {
+    await esperar();
+    const o = A.ordenes.find((x) => x.id === ordenId);
+    if (!o) throw new ErrorApi('Orden no encontrada', 404);
+    if (o.estado !== 'abierta') throw new ErrorApi('La orden ya está cerrada', 409);
+    A.lineas.filter((l) => l.ordenId === ordenId && l.estado === 'lista').forEach((l) => { l.estado = 'servida'; });
+    persistir();
+    return construirOrden(ordenId);
+  },
   cancelarMesaVacia: async (ordenId: number) => {
     await esperar();
     const o = A.ordenes.find((x) => x.id === ordenId);
