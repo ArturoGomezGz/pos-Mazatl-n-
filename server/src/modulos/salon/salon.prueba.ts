@@ -45,6 +45,7 @@ test('el guardado por lote persiste las posiciones', () => {
   salon.guardarPosiciones(layoutId, {
     mesas: [{ id: mesa.id, x: 200, y: 300, ancho: 120, alto: 120, rotacion: 90 }],
     elementos: [],
+    barras: [],
   });
 
   const guardada = salon.obtenerMesa(mesa.id, layoutId);
@@ -70,6 +71,7 @@ test('mover una mesa en una distribución no afecta a la otra', () => {
   salon.guardarPosiciones(segunda!.id, {
     mesas: [{ id: mesaId, x: 800, y: 40, ancho: 120, alto: 120, rotacion: 0 }],
     elementos: [],
+    barras: [],
   });
 
   assert.equal(salon.obtenerMesa(mesaId, primera!.id).x, 200);
@@ -87,6 +89,36 @@ test('siempre queda al menos una distribución', () => {
   const restante = salon.listarLayouts();
   assert.equal(restante.length, 1);
   assert.throws(() => salon.eliminarLayout(restante[0]!.id), /al menos una distribución/);
+});
+
+test('crear una barra genera un lugar independiente por cada uno, numerados B-n-lugar', () => {
+  const zona = salon.crearZona({ nombre: 'Barra zona' });
+  const barra = salon.crearBarra({ zonaId: zona.id, lugares: 3, x: 0, y: 0, ancho: 300, alto: 60, rotacion: 0 }, layoutId);
+
+  const plano = salon.obtenerPlano(layoutId);
+  const zonaPlano = plano.zonas.find((z) => z.id === zona.id)!;
+  const lugares = zonaPlano.mesas.filter((m) => m.barraId === barra.id).sort((a, b) => (a.numeroLugar ?? 0) - (b.numeroLugar ?? 0));
+
+  assert.equal(lugares.length, 3);
+  assert.deepEqual(lugares.map((l) => l.nombre), [`B-${barra.numero}-1`, `B-${barra.numero}-2`, `B-${barra.numero}-3`]);
+  // Los lugares cubren exactamente el ancho de la barra, sin huecos.
+  assert.equal(lugares[0]!.x, 0);
+  assert.equal(lugares[2]!.x + lugares[2]!.ancho, 300);
+  assert.equal(lugares.reduce((a, l) => a + l.ancho, 0), 300);
+});
+
+test('no se puede reducir una barra si un lugar a quitar tiene una cuenta abierta', async () => {
+  const { db } = await import('../../db/cliente.js');
+  const { ordenes, usuarios } = await import('../../db/esquema.js');
+
+  const zona = salon.crearZona({ nombre: 'Barra ocupada' });
+  const barra = salon.crearBarra({ zonaId: zona.id, lugares: 2, x: 0, y: 0, ancho: 140, alto: 60, rotacion: 0 }, layoutId);
+  const lugar2 = salon.obtenerPlano(layoutId).zonas.find((z) => z.id === zona.id)!.mesas.find((m) => m.barraId === barra.id && m.numeroLugar === 2)!;
+
+  const mesero = db.insert(usuarios).values({ nombre: 'Mesero prueba', rol: 'mesero', pinHash: 'x' }).returning().get();
+  db.insert(ordenes).values({ folio: 1, mesaId: lugar2.id, meseroId: mesero.id, estado: 'abierta' }).run();
+
+  assert.throws(() => salon.actualizarBarra(barra.id, { lugares: 1 }, layoutId), /cuenta abierta/);
 });
 
 test('al eliminar la distribución activa se activa otra', () => {

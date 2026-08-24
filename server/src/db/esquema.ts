@@ -31,8 +31,35 @@ export const mesas = sqliteTable('mesas', {
   forma: text('forma', { enum: FORMAS_MESA }).notNull().default('cuadrada'),
   activa: integer('activa', { mode: 'boolean' }).notNull().default(true),
   estado: text('estado', { enum: ESTADOS_MESA }).notNull().default('libre'),
+  // Cuando la mesa es un lugar de barra, pertenece a un grupo `barras` y no tiene
+  // posición propia: su geometría se calcula dividiendo la de la barra (ver salon.servicio.ts).
+  barraId: integer('barra_id').references(() => barras.id, { onDelete: 'cascade' }),
+  numeroLugar: integer('numero_lugar'),
   creadoEn: text('creado_en').notNull().default(sql`(datetime('now'))`),
 });
+
+/** Un grupo de "lugares de barra": se coloca una sola vez en el plano con un
+ *  número de lugares y se numera globalmente B-1, B-2… Cada lugar es una mesa
+ *  independiente (propia orden, propio estado) para poder atender varios grupos
+ *  de clientes en la misma barra a la vez. */
+export const barras = sqliteTable('barras', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  zonaId: integer('zona_id').notNull().references(() => zonas.id, { onDelete: 'cascade' }),
+  numero: integer('numero').notNull(),
+  lugares: integer('lugares').notNull().default(4),
+  activa: integer('activa', { mode: 'boolean' }).notNull().default(true),
+  creadoEn: text('creado_en').notNull().default(sql`(datetime('now'))`),
+});
+
+export const barraPosiciones = sqliteTable('barra_posiciones', {
+  layoutId: integer('layout_id').notNull().references(() => layouts.id, { onDelete: 'cascade' }),
+  barraId: integer('barra_id').notNull().references(() => barras.id, { onDelete: 'cascade' }),
+  x: integer('x').notNull().default(0),
+  y: integer('y').notNull().default(0),
+  ancho: integer('ancho').notNull().default(280),
+  alto: integer('alto').notNull().default(70),
+  rotacion: integer('rotacion').notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.layoutId, t.barraId] })]);
 
 export const mesaPosiciones = sqliteTable('mesa_posiciones', {
   layoutId: integer('layout_id').notNull().references(() => layouts.id, { onDelete: 'cascade' }),

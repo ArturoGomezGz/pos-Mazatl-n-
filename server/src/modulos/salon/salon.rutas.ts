@@ -76,6 +76,19 @@ rutasSalon.delete('/mesas/:id', soloAdmin, (req, res) => {
   res.json(salon.eliminarMesa(idDeRuta(req.params.id)));
 });
 
+/* Barras (lugares agrupados) */
+rutasSalon.post('/barras', soloAdmin, (req, res) => {
+  res.status(201).json(salon.crearBarra(validar(E.barraNueva, req.body), layoutDeConsulta(req)));
+});
+
+rutasSalon.patch('/barras/:id', soloAdmin, (req, res) => {
+  res.json(salon.actualizarBarra(idDeRuta(req.params.id), validar(E.barraCambio, req.body), layoutDeConsulta(req)));
+});
+
+rutasSalon.delete('/barras/:id', soloAdmin, (req, res) => {
+  res.json(salon.eliminarBarra(idDeRuta(req.params.id)));
+});
+
 /* Elementos decorativos */
 rutasSalon.post('/elementos', soloAdmin, (req, res) => {
   res.status(201).json(salon.crearElemento(validar(E.elementoNuevo, req.body), layoutDeConsulta(req)));

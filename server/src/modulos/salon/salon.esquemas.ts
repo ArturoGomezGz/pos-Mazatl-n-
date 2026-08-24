@@ -48,6 +48,27 @@ export const mesaCambio = z.object({
   rotacion: rotacion.optional(),
 });
 
+export const barraNueva = z.object({
+  zonaId: z.number().int().positive(),
+  lugares: z.number().int().min(1).max(30).default(4),
+  x: coordenada.default(0),
+  y: coordenada.default(0),
+  ancho: dimension.default(280),
+  alto: dimension.default(70),
+  rotacion: rotacion.default(0),
+});
+
+export const barraCambio = z.object({
+  lugares: z.number().int().min(1).max(30).optional(),
+  zonaId: z.number().int().positive().optional(),
+  activa: z.boolean().optional(),
+  x: coordenada.optional(),
+  y: coordenada.optional(),
+  ancho: dimension.optional(),
+  alto: dimension.optional(),
+  rotacion: rotacion.optional(),
+});
+
 export const elementoNuevo = z.object({
   zonaId: z.number().int().positive(),
   tipo: z.enum(TIPOS_ELEMENTO).default('muro'),
@@ -77,4 +98,5 @@ export const layoutCambio = z.object({
 export const posicionesLote = z.object({
   mesas: z.array(z.object({ id: z.number().int().positive(), ...geometria })).default([]),
   elementos: z.array(z.object({ id: z.number().int().positive(), ...geometria })).default([]),
+  barras: z.array(z.object({ id: z.number().int().positive(), ...geometria })).default([]),
 });

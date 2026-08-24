@@ -156,9 +156,32 @@ button, input, select { font: inherit; color: inherit; }
 .figura.editable { cursor: grab; }
 .figura.editable:active { cursor: grabbing; }
 .figura.redonda { border-radius: 50%; }
-.figura.barra { border-radius: 6px; background: var(--mar-profundo); color: var(--blanco); border-color: var(--mar-profundo); }
+.figura.forma-barra { border-radius: 6px; background: var(--mar-profundo); color: var(--blanco); border-color: var(--mar-profundo); }
 .figura.inactiva { opacity: 0.4; border-style: dashed; }
 .figura.seleccionada { outline: 3px solid var(--coral); outline-offset: 2px; z-index: 5; }
+
+/* Una barra se ve como un solo bloque continuo (RF: varios grupos de
+   clientes en la misma barra a la vez); por dentro cada `.lugar` es una
+   mesa independiente, clicable por separado en la vista de salón. */
+.figura.barra {
+  display: block; padding: 0; border-radius: 6px;
+  background: var(--mar-profundo); color: var(--blanco); border-color: var(--mar-profundo);
+}
+.figura.barra .lugar {
+  position: absolute; top: 0; height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-right: 1px solid rgba(255,255,255,0.25);
+  font-weight: 700; line-height: 1.15;
+}
+.figura.barra .lugar:last-child { border-right: none; }
+.figura.barra.consulta .lugar { cursor: pointer; touch-action: auto; }
+.figura.barra .lugar .nombre { font-size: 15px; }
+.figura.barra .lugar .estado { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+.figura.barra .lugar.estado-libre { background: #e8f6ee; border-color: rgba(46,158,91,0.35); color: #1c6b3d; }
+.figura.barra .lugar.estado-ocupada { background: #fdeae4; border-color: rgba(228,87,46,0.35); color: #97320f; }
+.figura.barra .lugar.estado-cuenta_pedida { background: #fdf2dc; border-color: rgba(240,162,2,0.35); color: #85590a; }
+.figura.barra .lugar.estado-por_limpiar { background: #eef1f3; border-color: rgba(138,154,166,0.35); color: #4b5a64; }
+.figura.barra .lugar.estado-reservada { background: #efeafa; border-color: rgba(107,79,187,0.35); color: #4a318f; }
 
 .figura .nombre { font-size: 17px; }
 .figura .detalle { font-size: 12px; font-weight: 600; opacity: 0.8; }

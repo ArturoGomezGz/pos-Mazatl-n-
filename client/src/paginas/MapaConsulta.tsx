@@ -18,7 +18,7 @@ export function MapaConsulta() {
   if (cargando && !plano) return <div className="cargando">Cargando el plano…</div>;
   if (!plano) return <div className="aviso">{error ?? 'No se pudo cargar el plano'}</div>;
 
-  const visible = zona ? { ...zona, mesas: zona.mesas.filter((m) => m.activa) } : undefined;
+  const visible = zona ? { ...zona, mesas: zona.mesas.filter((m) => m.activa), barras: zona.barras.filter((b) => b.activa) } : undefined;
 
   return (
     <div className="contenido">

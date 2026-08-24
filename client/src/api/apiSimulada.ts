@@ -14,6 +14,7 @@
 
 import { ErrorApi } from './errores';
 import type {
+  Barra,
   Categoria,
   Comanda,
   Config,
@@ -32,6 +33,7 @@ import type {
   Usuario,
   Zona,
 } from '../tipos';
+import { geometriaLugar } from '../tipos';
 
 /* ── Aritmética de dinero, igual que server/src/modulos/dinero.ts ──────── */
 
@@ -72,8 +74,11 @@ interface LayoutInterno { id: number; nombre: string; activo: boolean }
 interface MesaInterna {
   id: number; zonaId: number; nombre: string; capacidad: number;
   forma: Mesa['forma']; activa: boolean; estado: EstadoMesa;
+  barraId: number | null; numeroLugar: number | null;
 }
 interface PosicionInterna { layoutId: number; mesaId: number; x: number; y: number; ancho: number; alto: number; rotacion: number }
+interface BarraInterna { id: number; zonaId: number; numero: number; lugares: number; activa: boolean }
+interface PosicionBarraInterna { layoutId: number; barraId: number; x: number; y: number; ancho: number; alto: number; rotacion: number }
 interface ElementoInterno {
   id: number; layoutId: number; zonaId: number; tipo: Elemento['tipo']; etiqueta: string;
   x: number; y: number; ancho: number; alto: number; rotacion: number;
@@ -131,6 +136,8 @@ interface Almacen {
   layouts: LayoutInterno[];
   mesas: MesaInterna[];
   posiciones: PosicionInterna[];
+  barras: BarraInterna[];
+  posicionesBarra: PosicionBarraInterna[];
   elementos: ElementoInterno[];
   categorias: CategoriaInterna[];
   productos: ProductoInterno[];
@@ -162,7 +169,7 @@ function sembrar(): Almacen {
 
   const almacen: Almacen = {
     contador: 0,
-    usuarios: [], sesiones: {}, zonas: [], layouts: [], mesas: [], posiciones: [], elementos: [],
+    usuarios: [], sesiones: {}, zonas: [], layouts: [], mesas: [], posiciones: [], barras: [], posicionesBarra: [], elementos: [],
     categorias: [], productos: [], variantes: [], grupos: [], modificadores: [], productoGrupos: [],
     ordenes: [], lineas: [], lineaModificadores: [], comandas: [], cuentas: [], cuentaLineas: [],
     pagos: [], turnos: [], movimientos: [], bitacora: [],
@@ -197,10 +204,21 @@ function sembrar(): Almacen {
   const palapa = zona('Palapa', 2, 900, 700);
 
   const mesa = (zonaId: number, nombre: string, capacidad: number, forma: Mesa['forma'], x: number, y: number, ancho = 110, alto = 110) => {
-    const m: MesaInterna = { id: id(), zonaId, nombre, capacidad, forma, activa: true, estado: 'libre' };
+    const m: MesaInterna = { id: id(), zonaId, nombre, capacidad, forma, activa: true, estado: 'libre', barraId: null, numeroLugar: null };
     almacen.mesas.push(m);
     almacen.posiciones.push({ layoutId: layout.id, mesaId: m.id, x, y, ancho, alto, rotacion: 0 });
     return m;
+  };
+
+  const barraGrupo = (zonaId: number, lugares: number, x: number, y: number, ancho: number, alto: number) => {
+    const numero = almacen.barras.length + 1;
+    const b: BarraInterna = { id: id(), zonaId, numero, lugares, activa: true };
+    almacen.barras.push(b);
+    almacen.posicionesBarra.push({ layoutId: layout.id, barraId: b.id, x, y, ancho, alto, rotacion: 0 });
+    for (let i = 1; i <= lugares; i++) {
+      almacen.mesas.push({ id: id(), zonaId, nombre: `B-${numero}-${i}`, capacidad: 1, forma: 'barra', activa: true, estado: 'libre', barraId: b.id, numeroLugar: i });
+    }
+    return b;
   };
   mesa(terraza.id, 'T-1', 4, 'cuadrada', 80, 100);
   mesa(terraza.id, 'T-2', 4, 'cuadrada', 260, 100);
@@ -214,7 +232,7 @@ function sembrar(): Almacen {
   mesa(salon.id, 'S-3', 6, 'redonda', 460, 100, 150, 150);
   mesa(salon.id, 'S-4', 4, 'cuadrada', 100, 320);
   mesa(salon.id, 'S-5', 4, 'cuadrada', 280, 320);
-  for (let i = 1; i <= 4; i++) mesa(salon.id, `B-${i}`, 1, 'barra', 700 + (i - 1) * 80, 140, 70, 70);
+  barraGrupo(salon.id, 4, 700, 140, 320, 70);
   mesa(palapa.id, 'P-1', 10, 'rectangular', 120, 140, 300, 130);
   mesa(palapa.id, 'P-2', 10, 'rectangular', 120, 340, 300, 130);
   mesa(palapa.id, 'P-3', 6, 'redonda', 520, 200, 160, 160);
@@ -344,9 +362,20 @@ function layoutActivo(): LayoutInterno {
   return A.layouts.find((l) => l.activo) ?? A.layouts[0]!;
 }
 
+function barraComoDTO(b: BarraInterna, layoutId: number): Barra {
+  const pos = A.posicionesBarra.find((p) => p.layoutId === layoutId && p.barraId === b.id);
+  return {
+    id: b.id, zonaId: b.zonaId, numero: b.numero, lugares: b.lugares, activa: b.activa,
+    x: pos?.x ?? 0, y: pos?.y ?? 0, ancho: pos?.ancho ?? 280, alto: pos?.alto ?? 70, rotacion: pos?.rotacion ?? 0,
+  };
+}
+
 function construirPlano(layoutId?: number): Plano {
   const layout = layoutId ? A.layouts.find((l) => l.id === layoutId) : layoutActivo();
   if (!layout) throw new ErrorApi('Layout no encontrado', 404);
+
+  const barrasDTO = A.barras.map((b) => barraComoDTO(b, layout.id));
+  const barraPorId = new Map(barrasDTO.map((b) => [b.id, b]));
 
   const zonas: Zona[] = A.zonas
     .slice()
@@ -356,14 +385,24 @@ function construirPlano(layoutId?: number): Plano {
       mesas: A.mesas
         .filter((m) => m.zonaId === zona.id)
         .map((m): Mesa => {
+          if (m.barraId != null) {
+            const barra = barraPorId.get(m.barraId);
+            const geo = barra ? geometriaLugar(barra, (m.numeroLugar ?? 1) - 1, barra.lugares) : { x: 0, y: 0, ancho: 100, alto: 100, rotacion: 0 };
+            return {
+              id: m.id, zonaId: m.zonaId, nombre: m.nombre, capacidad: m.capacidad, forma: m.forma,
+              activa: m.activa, estado: m.estado, barraId: m.barraId, numeroLugar: m.numeroLugar,
+              ...geo, colocada: Boolean(barra),
+            };
+          }
           const pos = A.posiciones.find((p) => p.layoutId === layout.id && p.mesaId === m.id);
           return {
             id: m.id, zonaId: m.zonaId, nombre: m.nombre, capacidad: m.capacidad, forma: m.forma,
-            activa: m.activa, estado: m.estado,
+            activa: m.activa, estado: m.estado, barraId: null, numeroLugar: null,
             x: pos?.x ?? 0, y: pos?.y ?? 0, ancho: pos?.ancho ?? 100, alto: pos?.alto ?? 100, rotacion: pos?.rotacion ?? 0,
             colocada: Boolean(pos),
           };
         }),
+      barras: barrasDTO.filter((b) => b.zonaId === zona.id),
       elementos: A.elementos
         .filter((e) => e.zonaId === zona.id && e.layoutId === layout.id)
         .map((e) => ({ ...e })),
@@ -379,9 +418,18 @@ function mesaInterna(id: number): MesaInterna {
 }
 
 function mesaComoDTO(m: MesaInterna, layoutId: number): Mesa {
+  if (m.barraId != null) {
+    const barra = A.barras.find((b) => b.id === m.barraId);
+    const geo = barra ? geometriaLugar(barraComoDTO(barra, layoutId), (m.numeroLugar ?? 1) - 1, barra.lugares) : { x: 0, y: 0, ancho: 100, alto: 100, rotacion: 0 };
+    return {
+      id: m.id, zonaId: m.zonaId, nombre: m.nombre, capacidad: m.capacidad, forma: m.forma, activa: m.activa, estado: m.estado,
+      barraId: m.barraId, numeroLugar: m.numeroLugar, ...geo, colocada: Boolean(barra),
+    };
+  }
   const pos = A.posiciones.find((p) => p.layoutId === layoutId && p.mesaId === m.id);
   return {
     id: m.id, zonaId: m.zonaId, nombre: m.nombre, capacidad: m.capacidad, forma: m.forma, activa: m.activa, estado: m.estado,
+    barraId: null, numeroLugar: null,
     x: pos?.x ?? 0, y: pos?.y ?? 0, ancho: pos?.ancho ?? 100, alto: pos?.alto ?? 100, rotacion: pos?.rotacion ?? 0,
     colocada: Boolean(pos),
   };
@@ -628,6 +676,7 @@ export const apiSimulada = {
     A.layouts.push(nuevo);
     const origenId = copiarDeId ?? layoutActivo().id;
     for (const pos of A.posiciones.filter((p) => p.layoutId === origenId)) A.posiciones.push({ ...pos, layoutId: nuevo.id });
+    for (const pos of A.posicionesBarra.filter((p) => p.layoutId === origenId)) A.posicionesBarra.push({ ...pos, layoutId: nuevo.id });
     for (const el of A.elementos.filter((e) => e.layoutId === origenId)) A.elementos.push({ ...el, id: nuevoId(), layoutId: nuevo.id });
     persistir();
     return { ...nuevo };
@@ -680,7 +729,7 @@ export const apiSimulada = {
   crearMesa: async (datos: Partial<Mesa> & { zonaId: number; nombre: string }, layoutId?: number) => {
     await esperar();
     const lid = layoutId ?? layoutActivo().id;
-    const m: MesaInterna = { id: nuevoId(), zonaId: datos.zonaId, nombre: datos.nombre, capacidad: datos.capacidad ?? 4, forma: datos.forma ?? 'cuadrada', activa: true, estado: 'libre' };
+    const m: MesaInterna = { id: nuevoId(), zonaId: datos.zonaId, nombre: datos.nombre, capacidad: datos.capacidad ?? 4, forma: datos.forma ?? 'cuadrada', activa: true, estado: 'libre', barraId: null, numeroLugar: null };
     A.mesas.push(m);
     for (const l of A.layouts) A.posiciones.push({ layoutId: l.id, mesaId: m.id, x: datos.x ?? 0, y: datos.y ?? 0, ancho: datos.ancho ?? 100, alto: datos.alto ?? 100, rotacion: datos.rotacion ?? 0 });
     persistir();
@@ -690,6 +739,14 @@ export const apiSimulada = {
     await esperar();
     const m = mesaInterna(id);
     const lid = layoutId ?? layoutActivo().id;
+    if (m.barraId != null) {
+      const prohibidos = (['nombre', 'capacidad', 'forma', 'zonaId', 'x', 'y', 'ancho', 'alto', 'rotacion'] as const).filter((c) => cambios[c] !== undefined);
+      if (prohibidos.length) throw new ErrorApi('Este lugar pertenece a una barra: edita la barra completa para cambiar esto.', 409);
+      if (cambios.activa !== undefined) m.activa = cambios.activa;
+      if (cambios.estado !== undefined) m.estado = cambios.estado;
+      persistir();
+      return mesaComoDTO(m, lid);
+    }
     for (const campo of ['nombre', 'capacidad', 'forma', 'zonaId', 'activa', 'estado'] as const) {
       if (cambios[campo] !== undefined) (m as unknown as Record<string, unknown>)[campo] = cambios[campo];
     }
@@ -708,10 +765,72 @@ export const apiSimulada = {
   eliminarMesa: async (id: number) => {
     await esperar();
     const m = mesaInterna(id);
+    if (m.barraId != null) throw new ErrorApi('Este lugar pertenece a una barra: elimina o reduce la barra completa.', 409);
     A.mesas = A.mesas.filter((x) => x.id !== id);
     A.posiciones = A.posiciones.filter((p) => p.mesaId !== id);
     persistir();
     return mesaComoDTO(m, layoutActivo().id);
+  },
+
+  crearBarra: async (datos: Partial<Barra> & { zonaId: number; lugares: number }, layoutId?: number) => {
+    await esperar();
+    const lid = layoutId ?? layoutActivo().id;
+    const numero = (A.barras.reduce((max, b) => Math.max(max, b.numero), 0)) + 1;
+    const b: BarraInterna = { id: nuevoId(), zonaId: datos.zonaId, numero, lugares: datos.lugares, activa: true };
+    A.barras.push(b);
+    for (const l of A.layouts) A.posicionesBarra.push({ layoutId: l.id, barraId: b.id, x: datos.x ?? 0, y: datos.y ?? 0, ancho: datos.ancho ?? 280, alto: datos.alto ?? 70, rotacion: datos.rotacion ?? 0 });
+    for (let i = 1; i <= datos.lugares; i++) {
+      A.mesas.push({ id: nuevoId(), zonaId: datos.zonaId, nombre: `B-${numero}-${i}`, capacidad: 1, forma: 'barra', activa: true, estado: 'libre', barraId: b.id, numeroLugar: i });
+    }
+    persistir();
+    return barraComoDTO(b, lid);
+  },
+  actualizarBarra: async (id: number, cambios: Partial<Barra>, layoutId?: number) => {
+    await esperar();
+    const lid = layoutId ?? layoutActivo().id;
+    const b = A.barras.find((x) => x.id === id);
+    if (!b) throw new ErrorApi('Barra no encontrada', 404);
+
+    if (cambios.lugares !== undefined && cambios.lugares !== b.lugares) {
+      if (cambios.lugares < b.lugares) {
+        const aQuitar = A.mesas.filter((m) => m.barraId === id && (m.numeroLugar ?? 0) > cambios.lugares!);
+        if (aQuitar.some((m) => ordenAbiertaDeMesa(m.id))) {
+          throw new ErrorApi('No se puede reducir la barra: hay una cuenta abierta en un lugar que se eliminaría.', 409);
+        }
+        A.mesas = A.mesas.filter((m) => !aQuitar.includes(m));
+      } else {
+        for (let i = b.lugares + 1; i <= cambios.lugares; i++) {
+          A.mesas.push({ id: nuevoId(), zonaId: cambios.zonaId ?? b.zonaId, nombre: `B-${b.numero}-${i}`, capacidad: 1, forma: 'barra', activa: true, estado: 'libre', barraId: id, numeroLugar: i });
+        }
+      }
+      b.lugares = cambios.lugares;
+    }
+    if (cambios.zonaId !== undefined) {
+      b.zonaId = cambios.zonaId;
+      for (const m of A.mesas) if (m.barraId === id) m.zonaId = cambios.zonaId;
+    }
+    if (cambios.activa !== undefined) {
+      b.activa = cambios.activa;
+      for (const m of A.mesas) if (m.barraId === id) m.activa = cambios.activa;
+    }
+    const pos = A.posicionesBarra.find((p) => p.layoutId === lid && p.barraId === id);
+    if (pos) for (const campo of ['x', 'y', 'ancho', 'alto', 'rotacion'] as const) if (cambios[campo] !== undefined) pos[campo] = cambios[campo]!;
+    persistir();
+    return barraComoDTO(b, lid);
+  },
+  eliminarBarra: async (id: number) => {
+    await esperar();
+    const b = A.barras.find((x) => x.id === id);
+    if (!b) throw new ErrorApi('Barra no encontrada', 404);
+    const lugares = A.mesas.filter((m) => m.barraId === id);
+    if (lugares.some((m) => ordenAbiertaDeMesa(m.id))) {
+      throw new ErrorApi('No se puede eliminar la barra: hay una cuenta abierta en alguno de sus lugares.', 409);
+    }
+    A.mesas = A.mesas.filter((m) => m.barraId !== id);
+    A.barras = A.barras.filter((x) => x.id !== id);
+    A.posicionesBarra = A.posicionesBarra.filter((p) => p.barraId !== id);
+    persistir();
+    return barraComoDTO(b, layoutActivo().id);
   },
 
   crearElemento: async (datos: Partial<Elemento> & { zonaId: number }, layoutId?: number) => {
@@ -740,7 +859,11 @@ export const apiSimulada = {
 
   guardarPosiciones: async (
     layoutId: number,
-    lote: { mesas: ({ x: number; y: number; ancho: number; alto: number; rotacion: number } & { id: number })[]; elementos: ({ x: number; y: number; ancho: number; alto: number; rotacion: number } & { id: number })[] },
+    lote: {
+      mesas: ({ x: number; y: number; ancho: number; alto: number; rotacion: number } & { id: number })[];
+      barras: ({ x: number; y: number; ancho: number; alto: number; rotacion: number } & { id: number })[];
+      elementos: ({ x: number; y: number; ancho: number; alto: number; rotacion: number } & { id: number })[];
+    },
   ) => {
     await esperar();
     for (const m of lote.mesas) {
@@ -748,12 +871,17 @@ export const apiSimulada = {
       if (!pos) { pos = { layoutId, mesaId: m.id, x: 0, y: 0, ancho: 100, alto: 100, rotacion: 0 }; A.posiciones.push(pos); }
       Object.assign(pos, { x: m.x, y: m.y, ancho: m.ancho, alto: m.alto, rotacion: m.rotacion });
     }
+    for (const b of lote.barras) {
+      let pos = A.posicionesBarra.find((p) => p.layoutId === layoutId && p.barraId === b.id);
+      if (!pos) { pos = { layoutId, barraId: b.id, x: 0, y: 0, ancho: 280, alto: 70, rotacion: 0 }; A.posicionesBarra.push(pos); }
+      Object.assign(pos, { x: b.x, y: b.y, ancho: b.ancho, alto: b.alto, rotacion: b.rotacion });
+    }
     for (const e of lote.elementos) {
       const el = A.elementos.find((x) => x.id === e.id && x.layoutId === layoutId);
       if (el) Object.assign(el, { x: e.x, y: e.y, ancho: e.ancho, alto: e.alto, rotacion: e.rotacion });
     }
     persistir();
-    return { mesas: lote.mesas.length, elementos: lote.elementos.length };
+    return { mesas: lote.mesas.length, elementos: lote.elementos.length, barras: lote.barras.length };
   },
 
   /* ── Menú ───────────────────────────────────────────────────────── */

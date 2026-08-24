@@ -1,4 +1,5 @@
 import type {
+  Barra,
   Categoria,
   Comanda,
   Config,
@@ -117,14 +118,23 @@ const apiReal = {
     peticion<Mesa>(`/salon/mesas/${id}/estado`, { method: 'POST', ...json({ estado }) }),
   eliminarMesa: (id: number) => peticion<Mesa>(`/salon/mesas/${id}`, { method: 'DELETE' }),
 
+  crearBarra: (datos: Partial<Barra> & { zonaId: number; lugares: number }, layoutId?: number) =>
+    peticion<Barra>(conLayout('/salon/barras', layoutId), { method: 'POST', ...json(datos) }),
+  actualizarBarra: (id: number, cambios: Partial<Barra>, layoutId?: number) =>
+    peticion<Barra>(conLayout(`/salon/barras/${id}`, layoutId), { method: 'PATCH', ...json(cambios) }),
+  eliminarBarra: (id: number) => peticion<Barra>(`/salon/barras/${id}`, { method: 'DELETE' }),
+
   crearElemento: (datos: Partial<Elemento> & { zonaId: number }, layoutId?: number) =>
     peticion<Elemento>(conLayout('/salon/elementos', layoutId), { method: 'POST', ...json(datos) }),
   actualizarElemento: (id: number, cambios: Partial<Elemento>) =>
     peticion<Elemento>(`/salon/elementos/${id}`, { method: 'PATCH', ...json(cambios) }),
   eliminarElemento: (id: number) => peticion<Elemento>(`/salon/elementos/${id}`, { method: 'DELETE' }),
 
-  guardarPosiciones: (layoutId: number, lote: { mesas: (Geometria & { id: number })[]; elementos: (Geometria & { id: number })[] }) =>
-    peticion<{ mesas: number; elementos: number }>(conLayout('/salon/posiciones', layoutId), { method: 'PUT', ...json(lote) }),
+  guardarPosiciones: (
+    layoutId: number,
+    lote: { mesas: (Geometria & { id: number })[]; barras: (Geometria & { id: number })[]; elementos: (Geometria & { id: number })[] },
+  ) =>
+    peticion<{ mesas: number; elementos: number; barras: number }>(conLayout('/salon/posiciones', layoutId), { method: 'PUT', ...json(lote) }),
 
   /* ── Menú ───────────────────────────────────────────────────────── */
   menu: (completo = false) => peticion<Categoria[]>(`/menu${completo ? '?completo=1' : ''}`),

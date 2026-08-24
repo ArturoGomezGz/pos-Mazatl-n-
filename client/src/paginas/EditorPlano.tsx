@@ -3,13 +3,13 @@ import { api, ErrorApi } from '../api/cliente';
 import { Lienzo } from '../componentes/Lienzo';
 import { PanelPropiedades } from '../componentes/PanelPropiedades';
 import { usePlano } from '../hooks/usePlano';
-import type { Elemento, Geometria, Mesa, Seleccion, TipoElemento, Zona } from '../tipos';
+import type { Barra, Elemento, Geometria, Mesa, Seleccion, TipoElemento, Zona } from '../tipos';
 
 const CUADRICULA = 20;
 const PASO_TECLADO = 20;
 
-type Clave = string; // "mesa:12" | "elemento:3"
-const clave = (tipo: 'mesa' | 'elemento', id: number): Clave => `${tipo}:${id}`;
+type Clave = string; // "mesa:12" | "elemento:3" | "barra:1"
+const clave = (tipo: 'mesa' | 'elemento' | 'barra', id: number): Clave => `${tipo}:${id}`;
 
 export function EditorPlano() {
   const [layoutId, setLayoutId] = useState<number | undefined>(undefined);
@@ -31,6 +31,7 @@ export function EditorPlano() {
   const zona = useMemo(() => zonas.find((z) => z.id === zonaId) ?? zonas[0], [zonas, zonaId]);
   const mesaSel = seleccion?.tipo === 'mesa' ? zona?.mesas.find((m) => m.id === seleccion.id) : undefined;
   const elementoSel = seleccion?.tipo === 'elemento' ? zona?.elementos.find((e) => e.id === seleccion.id) : undefined;
+  const barraSel = seleccion?.tipo === 'barra' ? zona?.barras.find((b) => b.id === seleccion.id) : undefined;
 
   useEffect(() => {
     if (zona && zona.id !== zonaId) setZonaId(zona.id);
@@ -48,7 +49,12 @@ export function EditorPlano() {
     marcarSucio('elemento', id, cambios, soloGeometria);
   }
 
-  function marcarSucio(tipo: 'mesa' | 'elemento', id: number, cambios: Record<string, unknown>, soloGeometria: boolean) {
+  function editarBarra(id: number, cambios: Partial<Barra>, soloGeometria = false) {
+    setPlano((previo) => (previo ? aplicar(previo, 'barra', id, cambios) : previo));
+    marcarSucio('barra', id, cambios, soloGeometria);
+  }
+
+  function marcarSucio(tipo: 'mesa' | 'elemento' | 'barra', id: number, cambios: Record<string, unknown>, soloGeometria: boolean) {
     const k = clave(tipo, id);
     const camposGeo = ['x', 'y', 'ancho', 'alto', 'rotacion'];
     const tieneGeo = soloGeometria || Object.keys(cambios).some((c) => camposGeo.includes(c));
@@ -60,12 +66,13 @@ export function EditorPlano() {
     }
   }
 
-  function moverDesdeLienzo(tipo: 'mesa' | 'elemento', id: number, g: Geometria) {
+  function moverDesdeLienzo(tipo: 'mesa' | 'elemento' | 'barra', id: number, g: Geometria) {
     if (tipo === 'mesa') editarMesa(id, g, true);
+    else if (tipo === 'barra') editarBarra(id, g, true);
     else editarElemento(id, g, true);
   }
 
-  /* ── Alta de mesas y elementos ───────────────────────────────────────── */
+  /* ── Alta de mesas, barras y elementos ─────────────────────────────────── */
 
   async function agregarMesa(capacidad: number, forma: Mesa['forma'], ancho: number, alto: number) {
     if (!zona || !plano) return;
@@ -84,6 +91,15 @@ export function EditorPlano() {
       );
       await recargar();
       setSeleccion({ tipo: 'mesa', id: creada.id });
+    });
+  }
+
+  async function agregarBarra(lugares: number, ancho: number, alto: number) {
+    if (!zona || !plano) return;
+    await accion(async () => {
+      const creada = await api.crearBarra({ zonaId: zona.id, lugares, ancho, alto, ...puntoLibre(zona) }, plano.layout.id);
+      await recargar();
+      setSeleccion({ tipo: 'barra', id: creada.id });
     });
   }
 
@@ -118,6 +134,20 @@ export function EditorPlano() {
         );
         await recargar();
         setSeleccion({ tipo: 'mesa', id: copia.id });
+      } else if (barraSel) {
+        const copia = await api.crearBarra(
+          {
+            zonaId: barraSel.zonaId,
+            lugares: barraSel.lugares,
+            ancho: barraSel.ancho,
+            alto: barraSel.alto,
+            x: Math.min(barraSel.x + CUADRICULA * 2, zona.ancho - barraSel.ancho),
+            y: Math.min(barraSel.y + CUADRICULA * 2, zona.alto - barraSel.alto),
+          },
+          plano.layout.id,
+        );
+        await recargar();
+        setSeleccion({ tipo: 'barra', id: copia.id });
       } else if (elementoSel) {
         const copia = await api.crearElemento(
           {
@@ -139,10 +169,11 @@ export function EditorPlano() {
 
   async function eliminarSeleccion() {
     if (!seleccion) return;
-    const que = mesaSel ? `la mesa ${mesaSel.nombre}` : 'este elemento';
+    const que = mesaSel ? `la mesa ${mesaSel.nombre}` : barraSel ? `la barra B-${barraSel.numero} (${barraSel.lugares} lugares)` : 'este elemento';
     if (!confirm(`¿Eliminar ${que}? Esta acción no se puede deshacer.`)) return;
     await accion(async () => {
       if (seleccion.tipo === 'mesa') await api.eliminarMesa(seleccion.id);
+      else if (seleccion.tipo === 'barra') await api.eliminarBarra(seleccion.id);
       else await api.eliminarElemento(seleccion.id);
       setSeleccion(null);
       await recargar();
@@ -226,14 +257,21 @@ export function EditorPlano() {
         .filter((e): e is Elemento => Boolean(e))
         .map((e) => ({ id: e.id, x: e.x, y: e.y, ancho: e.ancho, alto: e.alto, rotacion: e.rotacion }));
 
-      if (mesas.length || elementos.length) {
-        await api.guardarPosiciones(plano.layout.id, { mesas, elementos });
+      const barras = [...geoSucias]
+        .filter((k) => k.startsWith('barra:'))
+        .map((k) => buscarBarra(plano, Number(k.split(':')[1])))
+        .filter((b): b is Barra => Boolean(b))
+        .map((b) => ({ id: b.id, x: b.x, y: b.y, ancho: b.ancho, alto: b.alto, rotacion: b.rotacion }));
+
+      if (mesas.length || elementos.length || barras.length) {
+        await api.guardarPosiciones(plano.layout.id, { mesas, elementos, barras });
       }
 
       for (const [k, cambios] of attrSucios) {
         const [tipo, crudo] = k.split(':');
         const id = Number(crudo);
         if (tipo === 'mesa') await api.actualizarMesa(id, cambios as Partial<Mesa>, plano.layout.id);
+        else if (tipo === 'barra') await api.actualizarBarra(id, cambios as Partial<Barra>, plano.layout.id);
         else await api.actualizarElemento(id, cambios as Partial<Elemento>);
       }
 
@@ -272,7 +310,7 @@ export function EditorPlano() {
       if (destino && ['INPUT', 'SELECT', 'TEXTAREA'].includes(destino.tagName)) return;
       if (!seleccion) return;
 
-      const actual: Mesa | Elemento | undefined = mesaSel ?? elementoSel;
+      const actual: Mesa | Elemento | Barra | undefined = mesaSel ?? barraSel ?? elementoSel;
       if (!actual) return;
 
       const desplazamientos: Record<string, [number, number]> = {
@@ -289,6 +327,7 @@ export function EditorPlano() {
           y: Math.min(Math.max(actual.y + delta[1], 0), zona.alto - actual.alto),
         };
         if (seleccion.tipo === 'mesa') editarMesa(seleccion.id, g, true);
+        else if (seleccion.tipo === 'barra') editarBarra(seleccion.id, g, true);
         else editarElemento(seleccion.id, g, true);
         return;
       }
@@ -403,7 +442,7 @@ export function EditorPlano() {
             <button className="btn" onClick={() => agregarMesa(4, 'cuadrada', 110, 110)}>Mesa de 4</button>
             <button className="btn" onClick={() => agregarMesa(6, 'redonda', 150, 150)}>Mesa de 6 redonda</button>
             <button className="btn" onClick={() => agregarMesa(8, 'rectangular', 240, 120)}>Mesa de 8 larga</button>
-            <button className="btn" onClick={() => agregarMesa(1, 'barra', 70, 70)}>Lugar de barra</button>
+            <button className="btn" onClick={() => agregarBarra(4, 280, 70)}>Barra (4 lugares)</button>
           </div>
 
           <div className="grupo">
@@ -440,9 +479,11 @@ export function EditorPlano() {
 
         <PanelPropiedades
           mesa={mesaSel}
+          barra={barraSel}
           elemento={elementoSel}
           zonas={zonas}
           onCambiarMesa={editarMesa}
+          onCambiarBarra={editarBarra}
           onCambiarElemento={editarElemento}
           onDuplicar={duplicar}
           onEliminar={eliminarSeleccion}
@@ -454,12 +495,13 @@ export function EditorPlano() {
 
 /* ── Utilidades ────────────────────────────────────────────────────────── */
 
-function aplicar(plano: import('../tipos').Plano, tipo: 'mesa' | 'elemento', id: number, cambios: Record<string, unknown>) {
+function aplicar(plano: import('../tipos').Plano, tipo: 'mesa' | 'elemento' | 'barra', id: number, cambios: Record<string, unknown>) {
   return {
     ...plano,
     zonas: plano.zonas.map((z) => ({
       ...z,
       mesas: tipo === 'mesa' ? z.mesas.map((m) => (m.id === id ? { ...m, ...cambios } : m)) : z.mesas,
+      barras: tipo === 'barra' ? z.barras.map((b) => (b.id === id ? { ...b, ...cambios } : b)) : z.barras,
       elementos: tipo === 'elemento' ? z.elementos.map((e) => (e.id === id ? { ...e, ...cambios } : e)) : z.elementos,
     })),
   };
@@ -467,6 +509,9 @@ function aplicar(plano: import('../tipos').Plano, tipo: 'mesa' | 'elemento', id:
 
 const buscarMesa = (plano: import('../tipos').Plano, id: number) =>
   plano.zonas.flatMap((z) => z.mesas).find((m) => m.id === id);
+
+const buscarBarra = (plano: import('../tipos').Plano, id: number) =>
+  plano.zonas.flatMap((z) => z.barras).find((b) => b.id === id);
 
 const buscarElemento = (plano: import('../tipos').Plano, id: number) =>
   plano.zonas.flatMap((z) => z.elementos).find((e) => e.id === id);

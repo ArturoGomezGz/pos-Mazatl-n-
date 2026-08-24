@@ -1,6 +1,7 @@
 import {
   ETIQUETAS_ELEMENTO,
   ETIQUETAS_FORMA,
+  type Barra,
   type Elemento,
   type FormaMesa,
   type Mesa,
@@ -10,25 +11,77 @@ import {
 
 interface Props {
   mesa?: Mesa;
+  barra?: Barra;
   elemento?: Elemento;
   zonas: Zona[];
   onCambiarMesa: (id: number, cambios: Partial<Mesa>) => void;
+  onCambiarBarra: (id: number, cambios: Partial<Barra>) => void;
   onCambiarElemento: (id: number, cambios: Partial<Elemento>) => void;
   onDuplicar: () => void;
   onEliminar: () => void;
 }
 
-export function PanelPropiedades({ mesa, elemento, zonas, onCambiarMesa, onCambiarElemento, onDuplicar, onEliminar }: Props) {
-  if (!mesa && !elemento) {
+export function PanelPropiedades({ mesa, barra, elemento, zonas, onCambiarMesa, onCambiarBarra, onCambiarElemento, onDuplicar, onEliminar }: Props) {
+  if (!mesa && !barra && !elemento) {
     return (
       <aside className="panel derecho">
         <h2>Propiedades</h2>
         <p style={{ color: 'var(--tinta-suave)', fontSize: 14, lineHeight: 1.5 }}>
-          Toca una mesa o un elemento del plano para editarlo.
+          Toca una mesa, una barra o un elemento del plano para editarlo.
         </p>
         <p style={{ color: 'var(--tinta-suave)', fontSize: 13, lineHeight: 1.5 }}>
           Arrastra para mover. Con algo seleccionado, las flechas del teclado lo mueven y <b>Supr</b> lo elimina.
         </p>
+      </aside>
+    );
+  }
+
+  if (barra) {
+    const cambiar = (cambios: Partial<Barra>) => onCambiarBarra(barra.id, cambios);
+    return (
+      <aside className="panel derecho">
+        <h2>Barra B-{barra.numero}</h2>
+
+        <div className="campo">
+          <label htmlFor="barra-lugares">Lugares</label>
+          <input
+            id="barra-lugares"
+            type="number"
+            min={1}
+            max={30}
+            value={barra.lugares}
+            onChange={(e) => cambiar({ lugares: entero(e.target.value, 1, 30, barra.lugares) })}
+          />
+          <p style={{ fontSize: 12, color: 'var(--tinta-suave)', margin: 0 }}>
+            Cada lugar es una mesa independiente: se numeran B-{barra.numero}-1, B-{barra.numero}-2… y pueden
+            atender a grupos distintos al mismo tiempo. Si reduces los lugares y alguno tiene una cuenta abierta,
+            no se podrá quitar hasta cerrarla.
+          </p>
+        </div>
+
+        <div className="campo">
+          <label htmlFor="barra-zona">Zona</label>
+          <select id="barra-zona" value={barra.zonaId} onChange={(e) => cambiar({ zonaId: Number(e.target.value) })}>
+            {zonas.map((z) => (
+              <option key={z.id} value={z.id}>{z.nombre}</option>
+            ))}
+          </select>
+        </div>
+
+        <Geometria valor={barra} onCambio={(g) => cambiar(g)} />
+
+        <div className="campo">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}>
+            <input type="checkbox" checked={barra.activa} onChange={(e) => cambiar({ activa: e.target.checked })} />
+            Barra en uso
+          </label>
+          <p style={{ fontSize: 12, color: 'var(--tinta-suave)', margin: 0 }}>
+            Desactívala en temporada baja: deja de aparecer en el piso, pero conserva su historial.
+          </p>
+        </div>
+
+        <button className="btn" onClick={onDuplicar}>Duplicar barra</button>
+        <button className="btn peligro" onClick={onEliminar}>Eliminar barra</button>
       </aside>
     );
   }

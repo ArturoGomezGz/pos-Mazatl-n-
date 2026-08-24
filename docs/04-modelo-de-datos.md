@@ -42,14 +42,28 @@ erDiagram
 
 **`mesa`** — `id`, `zona_id`, `nombre` (ej. "T-4"), `capacidad`, `forma`
 (`redonda|cuadrada|rect|barra`), `activa`, `estado`
-(`libre|ocupada|cuenta_pedida|por_limpiar|reservada`)
+(`libre|ocupada|cuenta_pedida|por_limpiar|reservada`), `barra_id`, `numero_lugar`
+> Cuando `barra_id` no es null, la mesa es un "lugar" dentro de una `barra`: su
+> nombre, capacidad, forma y posición se editan todas juntas vía la barra, pero
+> su `estado` y su `orden` son propios. Así una sola barra colocada en el plano
+> atiende a varios grupos de clientes a la vez.
+
+**`barra`** — `id`, `zona_id`, `numero` (consecutivo global, ej. B-1, B-2…),
+`lugares`, `activa`
+> Se coloca una sola vez en el plano; el servidor genera un lugar (una `mesa`)
+> por cada uno, numerado `B-{numero}-{lugar}`. Reducir `lugares` se bloquea si
+> algún lugar a quitar tiene una cuenta abierta.
 
 **`layout`** — `id`, `nombre` ("Normal", "Temporada alta"), `activo`
 > Permite guardar varias distribuciones del comedor (RF-1.8) sin duplicar las mesas.
 
 **`mesa_posicion`** — `layout_id`, `mesa_id`, `x`, `y`, `ancho`, `alto`, `rotacion`
 > La posición depende del layout, no de la mesa. Cambiar de distribución es cambiar un
-> renglón de configuración, no rehacer el comedor.
+> renglón de configuración, no rehacer el comedor. Los lugares de una barra no
+> tienen fila aquí: su geometría se calcula dividiendo la de la barra.
+
+**`barra_posicion`** — `layout_id`, `barra_id`, `x`, `y`, `ancho`, `alto`, `rotacion`
+> Espejo de `mesa_posicion` para la barra completa como bloque.
 
 **`elemento_plano`** — `id`, `layout_id`, `tipo` (`barra|cocina|baño|muro|planta|texto`),
 `etiqueta`, `x`, `y`, `ancho`, `alto`

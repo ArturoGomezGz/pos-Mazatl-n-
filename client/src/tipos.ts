@@ -19,6 +19,21 @@ export interface Mesa extends Geometria {
   activa: boolean;
   estado: EstadoMesa;
   colocada: boolean;
+  /** Si no es null, esta mesa es un lugar dentro de una `Barra`: su nombre,
+   *  capacidad, forma y posición se editan todos juntos vía la barra. */
+  barraId: number | null;
+  numeroLugar: number | null;
+}
+
+/** Un grupo de "lugares de barra" colocado como un solo bloque en el plano.
+ *  Cada lugar es una mesa independiente (ver `Mesa.barraId`) numerada
+ *  B-{numero}-{lugar}, para poder atender varios grupos a la vez. */
+export interface Barra extends Geometria {
+  id: number;
+  zonaId: number;
+  numero: number;
+  lugares: number;
+  activa: boolean;
 }
 
 export interface Elemento extends Geometria {
@@ -36,6 +51,7 @@ export interface Zona {
   ancho: number;
   alto: number;
   mesas: Mesa[];
+  barras: Barra[];
   elementos: Elemento[];
 }
 
@@ -52,7 +68,23 @@ export interface Plano {
 }
 
 /** Qué está seleccionado en el editor. */
-export type Seleccion = { tipo: 'mesa' | 'elemento'; id: number } | null;
+export type Seleccion = { tipo: 'mesa' | 'elemento' | 'barra'; id: number } | null;
+
+/** Divide la geometría de una barra en `total` lugares iguales, a lo largo de
+ *  su lado más largo, sin separación entre ellos (se ven como un solo bloque).
+ *  El último lugar absorbe el redondeo para que la suma cubra exactamente el
+ *  ancho/alto. Espejo de server/src/modulos/salon/salon.servicio.ts. */
+export function geometriaLugar(barra: Geometria, indice: number, total: number): Geometria {
+  const horizontal = barra.ancho >= barra.alto;
+  if (horizontal) {
+    const seg = Math.floor(barra.ancho / total);
+    const esUltimo = indice === total - 1;
+    return { x: barra.x + seg * indice, y: barra.y, ancho: esUltimo ? barra.ancho - seg * indice : seg, alto: barra.alto, rotacion: barra.rotacion };
+  }
+  const seg = Math.floor(barra.alto / total);
+  const esUltimo = indice === total - 1;
+  return { x: barra.x, y: barra.y + seg * indice, ancho: barra.ancho, alto: esUltimo ? barra.alto - seg * indice : seg, rotacion: barra.rotacion };
+}
 
 export const ETIQUETAS_ESTADO: Record<EstadoMesa, string> = {
   libre: 'Libre',

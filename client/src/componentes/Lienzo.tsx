@@ -1,8 +1,8 @@
 import { useRef } from 'react';
 import type { PointerEvent as EventoPuntero } from 'react';
-import { ETIQUETAS_ESTADO, type Elemento, type Geometria, type Mesa, type Seleccion, type Zona } from '../tipos';
+import { ETIQUETAS_ESTADO, geometriaLugar, type Barra, type Elemento, type Geometria, type Mesa, type Seleccion, type Zona } from '../tipos';
 
-type Tipo = 'mesa' | 'elemento';
+type Tipo = 'mesa' | 'elemento' | 'barra';
 type Modo = 'mover' | 'redimensionar';
 
 interface Props {
@@ -119,13 +119,29 @@ export function Lienzo({
           />
         ))}
 
-        {zona.mesas.map((mesa) => (
-          <FiguraMesa
-            key={mesa.id}
-            mesa={mesa}
+        {zona.mesas
+          .filter((mesa) => mesa.barraId == null)
+          .map((mesa) => (
+            <FiguraMesa
+              key={mesa.id}
+              mesa={mesa}
+              editable={editable}
+              mostrarEstado={mostrarEstados}
+              seleccionada={seleccion?.tipo === 'mesa' && seleccion.id === mesa.id}
+              onIniciar={iniciar}
+              onAbrir={onAbrirMesa}
+              manejadores={manejadores}
+            />
+          ))}
+
+        {zona.barras.map((barra) => (
+          <FiguraBarra
+            key={barra.id}
+            barra={barra}
+            lugares={zona.mesas.filter((m) => m.barraId === barra.id).sort((a, b) => (a.numeroLugar ?? 0) - (b.numeroLugar ?? 0))}
             editable={editable}
             mostrarEstado={mostrarEstados}
-            seleccionada={seleccion?.tipo === 'mesa' && seleccion.id === mesa.id}
+            seleccionada={seleccion?.tipo === 'barra' && seleccion.id === barra.id}
             onIniciar={iniciar}
             onAbrir={onAbrirMesa}
             manejadores={manejadores}
@@ -160,7 +176,6 @@ function FiguraMesa({
     'figura',
     `forma-${mesa.forma}`,
     mesa.forma === 'redonda' ? 'redonda' : '',
-    mesa.forma === 'barra' ? 'barra' : '',
     editable ? 'editable' : 'consulta',
     seleccionada ? 'seleccionada' : '',
     mesa.activa ? '' : 'inactiva',
@@ -192,6 +207,68 @@ function FiguraMesa({
           className="manija"
           {...manejadores}
           onPointerDown={(e) => onIniciar(e, 'mesa', mesa.id, geometriaDe(mesa), 'redimensionar')}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Una barra se coloca como un solo bloque, pero por dentro son mesas
+ *  independientes: cada lugar tiene su propio estado y su propia orden, así
+ *  que dos grupos de clientes pueden sentarse en la misma barra a la vez.
+ *  En el editor se arrastra y redimensiona como un bloque; en la vista de
+ *  salón cada lugar se toca por separado para abrirlo. */
+function FiguraBarra({
+  barra,
+  lugares,
+  editable,
+  mostrarEstado,
+  seleccionada,
+  onIniciar,
+  onAbrir,
+  manejadores,
+}: {
+  barra: Barra;
+  lugares: Mesa[];
+  editable: boolean;
+  mostrarEstado: boolean;
+  seleccionada: boolean;
+  onIniciar: Iniciar;
+  onAbrir?: (mesa: Mesa) => void;
+  manejadores: Manejadores;
+}) {
+  return (
+    <div
+      className={`figura barra${editable ? ' editable' : ' consulta'}${seleccionada ? ' seleccionada' : ''}${barra.activa ? '' : ' inactiva'}`}
+      style={{
+        left: barra.x,
+        top: barra.y,
+        width: barra.ancho,
+        height: barra.alto,
+        transform: barra.rotacion ? `rotate(${barra.rotacion}deg)` : undefined,
+      }}
+      {...manejadores}
+      {...(editable ? { onPointerDown: (e: EventoPuntero<HTMLElement>) => onIniciar(e, 'barra', barra.id, geometriaDe(barra), 'mover') } : {})}
+    >
+      {lugares.map((lugar, i) => {
+        const seg = geometriaLugar(barra, i, lugares.length);
+        return (
+          <div
+            key={lugar.id}
+            className={`lugar${mostrarEstado ? ` estado-${lugar.estado}` : ''}`}
+            style={{ left: seg.x - barra.x, top: seg.y - barra.y, width: seg.ancho, height: seg.alto }}
+            {...(!editable ? { onClick: () => onAbrir?.(lugar), role: 'button', tabIndex: 0 } : {})}
+          >
+            <span className="nombre">{lugar.numeroLugar}</span>
+            {mostrarEstado && <span className="estado">{ETIQUETAS_ESTADO[lugar.estado]}</span>}
+          </div>
+        );
+      })}
+      {editable && seleccionada && (
+        <span
+          className="manija"
+          {...manejadores}
+          onPointerDown={(e) => onIniciar(e, 'barra', barra.id, geometriaDe(barra), 'redimensionar')}
         />
       )}
     </div>
