@@ -68,7 +68,7 @@ server/
       esquema.ts        Tablas tipadas (Drizzle)
       cliente.ts        Conexión SQLite + pragmas de durabilidad
       migrar.ts         Migrador propio
-      semilla.ts        Comedor de ejemplo para desarrollo
+      semilla.ts        Usuario administrador inicial
     http/
       errores.ts        ErrorHttp + manejador central
       validar.ts        Puente con Zod

@@ -41,21 +41,17 @@ Requiere **Node.js 20 o superior**.
 
 ```bash
 npm install
-npm run db:seed     # crea la base, un comedor y un menú de ejemplo
+npm run db:seed     # crea la base y el usuario administrador inicial
 npm run dev         # API en :3001 y cliente en :5173
 ```
 
 Abre <http://localhost:5173>. Desde una tablet en la misma red, usa la IP del servidor.
 
-PINs del equipo de ejemplo:
+PIN inicial:
 
 | Persona | Rol | PIN |
 |---|---|---|
-| Doña Rosa | Administradora | `1234` |
-| Miguel | Cajero | `2222` |
-| Luis | Mesero | `3333` |
-| Karla | Mesera | `4444` |
-| Cocina | Cocina | `5555` |
+| Administrador | Administrador | `1234` |
 
 ```bash
 npm test            # pruebas de las reglas de negocio
