@@ -266,6 +266,7 @@ button, input, select { font: inherit; color: inherit; }
 .acciones-dialogo { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 18px; flex-wrap: wrap; }
 .dialogo-pie .acciones-dialogo { margin-top: 0; }
 .total-dialogo { margin-right: auto; font-size: 22px; font-weight: 800; color: var(--mar-profundo); }
+.dialogo-confirmacion .dialogo-cuerpo p { margin: 0 0 4px; font-size: 16px; }
 
 .grupo-opciones { margin-bottom: 18px; }
 .grupo-opciones h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--tinta-suave); margin: 0 0 8px; display: flex; align-items: center; gap: 10px; }
