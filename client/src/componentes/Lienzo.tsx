@@ -179,10 +179,10 @@ function FiguraMesa({
         height: mesa.alto,
         transform: mesa.rotacion ? `rotate(${mesa.rotacion}deg)` : undefined,
       }}
+      {...manejadores}
       {...(editable
         ? { onPointerDown: (e: EventoPuntero<HTMLElement>) => onIniciar(e, 'mesa', mesa.id, geometriaDe(mesa), 'mover') }
         : { onClick: () => onAbrir?.(mesa), role: 'button', tabIndex: 0 })}
-      {...manejadores}
     >
       <span className="nombre">{mesa.nombre}</span>
       <span className="detalle">{mesa.capacidad}p</span>
@@ -190,8 +190,8 @@ function FiguraMesa({
       {editable && seleccionada && (
         <span
           className="manija"
-          onPointerDown={(e) => onIniciar(e, 'mesa', mesa.id, geometriaDe(mesa), 'redimensionar')}
           {...manejadores}
+          onPointerDown={(e) => onIniciar(e, 'mesa', mesa.id, geometriaDe(mesa), 'redimensionar')}
         />
       )}
     </div>
@@ -221,17 +221,17 @@ function FiguraElemento({
         height: elemento.alto,
         transform: elemento.rotacion ? `rotate(${elemento.rotacion}deg)` : undefined,
       }}
+      {...manejadores}
       {...(editable
         ? { onPointerDown: (e: EventoPuntero<HTMLElement>) => onIniciar(e, 'elemento', elemento.id, geometriaDe(elemento), 'mover') }
         : {})}
-      {...manejadores}
     >
       {elemento.etiqueta}
       {editable && seleccionado && (
         <span
           className="manija"
-          onPointerDown={(e) => onIniciar(e, 'elemento', elemento.id, geometriaDe(elemento), 'redimensionar')}
           {...manejadores}
+          onPointerDown={(e) => onIniciar(e, 'elemento', elemento.id, geometriaDe(elemento), 'redimensionar')}
         />
       )}
     </div>
