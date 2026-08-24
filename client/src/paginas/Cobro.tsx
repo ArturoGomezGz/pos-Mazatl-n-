@@ -68,6 +68,7 @@ export function Cobro() {
   const recibidoCentavos = Number(recibido || '0');
   const cambio = Math.max(0, recibidoCentavos - restante);
   const sugeridas = (config.propina_sugerida ?? '10,15,20').split(',').map((n) => Number(n.trim())).filter(Boolean);
+  const baseDePropina = (cuenta?.subtotalCentavos ?? 0) - (cuenta?.descuentoCentavos ?? 0);
   const efectivoInsuficiente = metodo === 'efectivo' && recibidoCentavos > 0 && recibidoCentavos < restante;
   const abiertas = cuentas.filter((c) => c.estado === 'abierta');
   const separada = cuentas.length > 1;
@@ -300,9 +301,20 @@ export function Cobro() {
                 <h3>Propina</h3>
                 <div className="opciones">
                   {sugeridas.map((p) => (
-                    <button key={p} className="opcion" onClick={() => propina(p)}>{p}%</button>
+                    <button
+                      key={p}
+                      className={`opcion${cuenta.propinaCentavos > 0 && cuenta.propinaCentavos === Math.round((baseDePropina * p) / 100) ? ' elegida' : ''}`}
+                      onClick={() => propina(p)}
+                    >
+                      {p}%
+                    </button>
                   ))}
-                  <button className="opcion" onClick={() => propina(0)}>Sin propina</button>
+                  <button
+                    className={`opcion${cuenta.propinaCentavos === 0 ? ' elegida' : ''}`}
+                    onClick={() => propina(0)}
+                  >
+                    Sin propina
+                  </button>
                 </div>
               </div>
 
