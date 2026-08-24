@@ -190,6 +190,16 @@ export function EditorPlano() {
     });
   }
 
+  /** Cuando todavía no existe ninguna distribución (comedor recién dado de alta)
+   *  no hay `plano` del cual partir: se crea una distribución vacía sin copiar nada. */
+  async function crearPrimerLayout() {
+    await accion(async () => {
+      const creada = await api.crearLayout('Comedor');
+      await api.activarLayout(creada.id);
+      setLayoutId(creada.id);
+    });
+  }
+
   async function activarLayout() {
     if (!plano || plano.layout.activo) return;
     await accion(async () => {
@@ -302,7 +312,18 @@ export function EditorPlano() {
   }, [haycambios]);
 
   if (cargando && !plano) return <div className="cargando">Cargando el comedor…</div>;
-  if (!plano) return <div className="aviso">{error ?? 'No se pudo cargar el plano'}</div>;
+  if (!plano) {
+    return (
+      <div className="contenido">
+        <div className="aviso">{error ?? 'No se pudo cargar el plano'}</div>
+        <div className="vacio">
+          Todavía no existe ninguna distribución del comedor.
+          <br />
+          <button className="btn primario" onClick={crearPrimerLayout}>Crear la primera distribución</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="contenido">
