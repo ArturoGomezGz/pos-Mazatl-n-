@@ -1,18 +1,24 @@
 import path from 'node:path';
 import { db } from './cliente.js';
-import { usuarios } from './esquema.js';
+import { layouts, usuarios } from './esquema.js';
 import { hashearPin } from '../modulos/auth/auth.servicio.js';
 import { migrar } from './migrar.js';
 
-/** Datos de arranque: solo el usuario administrador inicial, para poder
- *  entrar al sistema por primera vez. Idempotente: si ya hay usuarios no
- *  inserta nada, así que se puede llamar en cada arranque del servidor. */
+/** Datos de arranque: el usuario administrador inicial, para poder entrar al
+ *  sistema por primera vez, y una distribución vacía del comedor, para que el
+ *  editor de plano tenga algo sobre lo que trabajar. Idempotente: si ya hay
+ *  usuarios/layouts no inserta nada, así que se puede llamar en cada arranque
+ *  del servidor. */
 export function sembrar(): void {
   migrar();
 
   if (db.select().from(usuarios).all().length === 0) {
     db.insert(usuarios).values({ nombre: 'Administrador', rol: 'admin', pinHash: hashearPin('1234') }).run();
     console.log('Usuario administrador creado. PIN: 1234');
+  }
+
+  if (db.select().from(layouts).all().length === 0) {
+    db.insert(layouts).values({ nombre: 'Distribución 1', activo: true }).run();
   }
 }
 

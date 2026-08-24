@@ -315,11 +315,11 @@ export function EditorPlano() {
   if (!plano) {
     return (
       <div className="contenido">
-        <div className="aviso">{error ?? 'No se pudo cargar el plano'}</div>
         <div className="vacio">
           Todavía no existe ninguna distribución del comedor.
-          <br />
-          <button className="btn primario" onClick={crearPrimerLayout}>Crear la primera distribución</button>
+          <div style={{ marginTop: 20 }}>
+            <button className="btn primario" onClick={crearPrimerLayout}>Crear la primera distribución</button>
+          </div>
         </div>
       </div>
     );
