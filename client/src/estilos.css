@@ -404,6 +404,7 @@ button, input, select { font: inherit; color: inherit; }
 /* ══ Móvil: el flujo del mesero vive en un teléfono ═══════════════════ */
 
 .solo-movil { display: none; }
+.solo-movil-bloque { display: none; }
 .barra-inferior { display: none; }
 .barra.compacta { gap: 8px; padding: 8px 12px; }
 
@@ -483,6 +484,8 @@ button, input, select { font: inherit; color: inherit; }
 
 @media (max-width: 860px) {
   .solo-movil { display: inline-flex; }
+  .solo-movil-bloque { display: block; }
+  .bloque.solo-escritorio { display: none; }
 
   .encabezado__superior { padding: 8px 12px; min-height: 52px; gap: 8px; }
   .encabezado h1 { font-size: 15px; }

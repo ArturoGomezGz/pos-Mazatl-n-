@@ -83,7 +83,7 @@ export function AdminUsuarios() {
           </p>
         </section>
 
-        <section className="bloque">
+        <section className="bloque solo-escritorio">
           <h2>Bitácora</h2>
           <p className="tenue">Todo lo sensible queda registrado: cancelaciones, descuentos, cambios de precio, cortes.</p>
           <table className="tabla">
@@ -100,6 +100,7 @@ export function AdminUsuarios() {
             </tbody>
           </table>
         </section>
+        <p className="tenue solo-movil-bloque">La bitácora solo se muestra en pantallas de escritorio.</p>
       </div>
 
       {nuevo && <DialogoUsuario onCerrar={() => setNuevo(false)} onCrear={(d) => accion(async () => { await api.crearUsuario(d); setNuevo(false); })} />}
