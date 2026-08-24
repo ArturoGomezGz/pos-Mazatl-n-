@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api, ErrorApi } from '../api/cliente';
 import { Lienzo } from '../componentes/Lienzo';
 import { PanelPropiedades } from '../componentes/PanelPropiedades';
@@ -13,7 +12,6 @@ type Clave = string; // "mesa:12" | "elemento:3" | "barra:1"
 const clave = (tipo: 'mesa' | 'elemento' | 'barra', id: number): Clave => `${tipo}:${id}`;
 
 export function EditorPlano() {
-  const navegar = useNavigate();
   const [layoutId, setLayoutId] = useState<number | undefined>(undefined);
   const { plano, setPlano, cargando, error, setError, recargar } = usePlano(layoutId);
 
@@ -526,7 +524,6 @@ export function EditorPlano() {
               seleccion={null}
               onSeleccionar={() => {}}
               onGeometria={() => {}}
-              onAbrirMesa={(mesa) => navegar(`/orden/${mesa.id}`)}
             />
           ) : (
             <div className="vacio">No hay zonas configuradas.</div>
