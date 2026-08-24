@@ -19,8 +19,17 @@ export function PedirAutorizacion({ titulo, detalle, pedirMotivo = true, onCance
 
   const listo = pin.length >= 4 && (!pedirMotivo || motivo.trim().length >= 3);
 
+  const acciones = (
+    <div className="acciones-dialogo">
+      <button className="btn" onClick={onCancelar}>Cancelar</button>
+      <button className="btn primario" disabled={!listo} onClick={() => onConfirmar({ pin, motivo: motivo.trim() })}>
+        Autorizar
+      </button>
+    </div>
+  );
+
   return (
-    <Dialogo titulo={titulo} onCerrar={onCancelar} ancho={420}>
+    <Dialogo titulo={titulo} onCerrar={onCancelar} ancho={420} pie={acciones}>
       <p className="detalle-dialogo">{detalle}</p>
 
       {pedirMotivo && (
@@ -46,13 +55,6 @@ export function PedirAutorizacion({ titulo, detalle, pedirMotivo = true, onCance
         onTecla={(t) => t && setPin((p) => (p.length < 6 ? p + t : p))}
         onBorrar={() => setPin((p) => p.slice(0, -1))}
       />
-
-      <div className="acciones-dialogo">
-        <button className="btn" onClick={onCancelar}>Cancelar</button>
-        <button className="btn primario" disabled={!listo} onClick={() => onConfirmar({ pin, motivo: motivo.trim() })}>
-          Autorizar
-        </button>
-      </div>
     </Dialogo>
   );
 }

@@ -67,8 +67,30 @@ export function DialogoProducto({ producto, onCancelar, onAgregar }: Props) {
     });
   }
 
+  const acciones = (
+    <div className="acciones-dialogo">
+      <span className="total-dialogo">{pesos(total)}</span>
+      <button className="btn" onClick={onCancelar}>Cancelar</button>
+      <button
+        className="btn primario"
+        disabled={!listo}
+        onClick={() =>
+          onAgregar({
+            varianteId: variante!.id,
+            cantidadMilesimas,
+            nota: nota.trim(),
+            modificadoresIds: [...elegidos],
+            ...(esAbierto ? { precioCentavos: precioBase } : {}),
+          })
+        }
+      >
+        Agregar
+      </button>
+    </div>
+  );
+
   return (
-    <Dialogo titulo={producto.nombre} onCerrar={onCancelar} ancho={560}>
+    <Dialogo titulo={producto.nombre} onCerrar={onCancelar} ancho={560} pie={acciones}>
       {producto.descripcion && <p className="detalle-dialogo">{producto.descripcion}</p>}
 
       {producto.tipoVenta === 'variantes' && disponibles.length > 1 && (
@@ -163,26 +185,6 @@ export function DialogoProducto({ producto, onCancelar, onAgregar }: Props) {
       )}
       {esAbierto && precioBase <= 0 && <p className="aviso-suave">Captura el precio del día.</p>}
       {esPeso && cantidadMilesimas <= 0 && <p className="aviso-suave">Captura el peso en gramos.</p>}
-
-      <div className="acciones-dialogo">
-        <span className="total-dialogo">{pesos(total)}</span>
-        <button className="btn" onClick={onCancelar}>Cancelar</button>
-        <button
-          className="btn primario"
-          disabled={!listo}
-          onClick={() =>
-            onAgregar({
-              varianteId: variante!.id,
-              cantidadMilesimas,
-              nota: nota.trim(),
-              modificadoresIds: [...elegidos],
-              ...(esAbierto ? { precioCentavos: precioBase } : {}),
-            })
-          }
-        >
-          Agregar
-        </button>
-      </div>
     </Dialogo>
   );
 }
