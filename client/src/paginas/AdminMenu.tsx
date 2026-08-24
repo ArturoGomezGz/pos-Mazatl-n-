@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ErrorApi } from '../api/cliente';
 import { Dialogo } from '../componentes/Dialogo';
+import { MenuVenta } from '../componentes/MenuVenta';
+import { useSesion } from '../estado/Sesion';
 import {
   AYUDA_TIPO_VENTA,
   ETIQUETAS_TIPO_VENTA,
+  leerEstiloMenu,
   pesos,
   type Categoria,
   type Estacion,
@@ -15,6 +18,8 @@ import {
 const COLORES = ['#13618c', '#e4572e', '#2e9e5b', '#f0a202', '#6b4fbb', '#0b3954'];
 
 export function AdminMenu() {
+  const { config } = useSesion();
+  const estilo = leerEstiloMenu(config);
   const [menu, setMenu] = useState<Categoria[]>([]);
   const [grupos, setGrupos] = useState<GrupoModificador[]>([]);
   const [categoriaId, setCategoriaId] = useState<number | null>(null);
@@ -47,130 +52,148 @@ export function AdminMenu() {
 
   return (
     <div className="contenido">
-      <div className="barra">
-        <strong>Menú</strong>
-        <span className="tenue">{menu.reduce((a, c) => a + c.productos.length, 0)} productos</span>
-        <span className="empuje" />
-        <button className="btn chico" onClick={() => setGestionandoGrupos(true)}>Modificadores</button>
-        <button className="btn chico" onClick={() => accion(async () => { await api.reabrirDisponibilidad(); })}>
-          Reabrir agotados del día
-        </button>
-        <button className="btn primario" disabled={!categoria} onClick={() => setEditando('nuevo')}>+ Producto</button>
+      {/* Editar el menú es trabajo de escritorio: tablas y formularios no caben
+          bien en un teléfono. Ahí se cambia por una vista de solo consulta. */}
+      <div className="aviso info editor-solo-escritorio">
+        La edición del menú está pensada para computadora. En un teléfono puedes consultar el menú aquí abajo.
       </div>
 
-      {error && <div className="aviso">{error}</div>}
-
-      <div className="cuerpo">
-        <aside className="panel">
-          <h2>Categorías</h2>
-          {menu.map((c) => (
-            <button
-              key={c.id}
-              className={`btn categoria${c.id === categoria?.id ? ' elegida' : ''}`}
-              style={{ borderLeft: `6px solid ${c.color}` }}
-              onClick={() => setCategoriaId(c.id)}
-            >
-              {c.nombre}
-              <span className="tenue"> ({c.productos.length})</span>
-            </button>
-          ))}
-          <button
-            className="btn"
-            onClick={() => {
-              const nombre = prompt('Nombre de la categoría (ej. Botanas):')?.trim();
-              if (nombre) void accion(async () => { await api.crearCategoria({ nombre }); });
-            }}
-          >
-            + Categoría
+      <div className="vista-escritorio">
+        <div className="barra">
+          <strong>Menú</strong>
+          <span className="tenue">{menu.reduce((a, c) => a + c.productos.length, 0)} productos</span>
+          <span className="empuje" />
+          <button className="btn chico" onClick={() => setGestionandoGrupos(true)}>Modificadores</button>
+          <button className="btn chico" onClick={() => accion(async () => { await api.reabrirDisponibilidad(); })}>
+            Reabrir agotados del día
           </button>
+          <button className="btn primario" disabled={!categoria} onClick={() => setEditando('nuevo')}>+ Producto</button>
+        </div>
 
-          {categoria && (
-            <div className="grupo">
-              <h2>Categoría {categoria.nombre}</h2>
-              <div className="opciones">
-                {COLORES.map((color) => (
-                  <button
-                    key={color}
-                    className={`muestra-color${categoria.color === color ? ' elegida' : ''}`}
-                    style={{ background: color }}
-                    aria-label={`Color ${color}`}
-                    onClick={() => accion(async () => { await api.actualizarCategoria(categoria.id, { color }); })}
-                  />
-                ))}
-              </div>
-              <button
-                className="btn"
-                onClick={() => {
-                  const nombre = prompt('Nuevo nombre:', categoria.nombre)?.trim();
-                  if (nombre) void accion(async () => { await api.actualizarCategoria(categoria.id, { nombre }); });
-                }}
-              >
-                Renombrar
-              </button>
-              <button
-                className="btn peligro"
-                onClick={() => {
-                  if (confirm(`¿Eliminar la categoría ${categoria.nombre}?`)) {
-                    void accion(async () => { await api.eliminarCategoria(categoria.id); setCategoriaId(null); });
-                  }
-                }}
-              >
-                Eliminar categoría
-              </button>
-            </div>
-          )}
-        </aside>
+        {error && <div className="aviso">{error}</div>}
 
-        <div className="columna-tabla">
-          <table className="tabla">
-            <thead>
-              <tr>
-                <th>Producto</th>
-                <th>Estilo de venta</th>
-                <th>Precio</th>
-                <th>Estación</th>
-                <th>Hoy</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {(categoria?.productos ?? []).map((p) => (
-                <tr key={p.id} className={p.activo ? '' : 'inactivo'}>
-                  <td>
-                    <strong>{p.nombre}</strong>
-                    {p.descripcion && <div className="tenue">{p.descripcion}</div>}
-                  </td>
-                  <td>{ETIQUETAS_TIPO_VENTA[p.tipoVenta]}</td>
-                  <td className="numero">
-                    {p.tipoVenta === 'abierto'
-                      ? 'del día'
-                      : p.variantes.filter((v) => v.activa).map((v) => (
-                          <div key={v.id}>
-                            {p.tipoVenta === 'variantes' && <span className="tenue">{v.nombre}: </span>}
-                            {pesos(v.precioCentavos)}
-                            {p.tipoVenta === 'peso' && ' /kg'}
-                          </div>
-                        ))}
-                  </td>
-                  <td>{p.estacion === 'barra' ? 'Barra' : 'Cocina'}</td>
-                  <td>
+        <div className="cuerpo">
+          <aside className="panel">
+            <h2>Categorías</h2>
+            {menu.map((c) => (
+              <button
+                key={c.id}
+                className={`btn categoria${c.id === categoria?.id ? ' elegida' : ''}`}
+                style={{ borderLeft: `6px solid ${c.color}` }}
+                onClick={() => setCategoriaId(c.id)}
+              >
+                {c.nombre}
+                <span className="tenue"> ({c.productos.length})</span>
+              </button>
+            ))}
+            <button
+              className="btn"
+              onClick={() => {
+                const nombre = prompt('Nombre de la categoría (ej. Botanas):')?.trim();
+                if (nombre) void accion(async () => { await api.crearCategoria({ nombre }); });
+              }}
+            >
+              + Categoría
+            </button>
+
+            {categoria && (
+              <div className="grupo">
+                <h2>Categoría {categoria.nombre}</h2>
+                <div className="opciones">
+                  {COLORES.map((color) => (
                     <button
-                      className={`btn chico${p.disponibleHoy ? '' : ' peligro'}`}
-                      onClick={() => accion(async () => { await api.disponibilidad(p.id, !p.disponibleHoy); })}
-                    >
-                      {p.disponibleHoy ? 'Disponible' : 'Agotado'}
-                    </button>
-                  </td>
-                  <td>
-                    <button className="btn chico" onClick={() => setEditando(p)}>Editar</button>
-                  </td>
+                      key={color}
+                      className={`muestra-color${categoria.color === color ? ' elegida' : ''}`}
+                      style={{ background: color }}
+                      aria-label={`Color ${color}`}
+                      onClick={() => accion(async () => { await api.actualizarCategoria(categoria.id, { color }); })}
+                    />
+                  ))}
+                </div>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    const nombre = prompt('Nuevo nombre:', categoria.nombre)?.trim();
+                    if (nombre) void accion(async () => { await api.actualizarCategoria(categoria.id, { nombre }); });
+                  }}
+                >
+                  Renombrar
+                </button>
+                <button
+                  className="btn peligro"
+                  onClick={() => {
+                    if (confirm(`¿Eliminar la categoría ${categoria.nombre}?`)) {
+                      void accion(async () => { await api.eliminarCategoria(categoria.id); setCategoriaId(null); });
+                    }
+                  }}
+                >
+                  Eliminar categoría
+                </button>
+              </div>
+            )}
+          </aside>
+
+          <div className="columna-tabla">
+            <table className="tabla">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Estilo de venta</th>
+                  <th>Precio</th>
+                  <th>Estación</th>
+                  <th>Hoy</th>
+                  <th />
                 </tr>
-              ))}
-              {categoria && categoria.productos.length === 0 && (
-                <tr><td colSpan={6} className="tenue">Esta categoría no tiene productos todavía.</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(categoria?.productos ?? []).map((p) => (
+                  <tr key={p.id} className={p.activo ? '' : 'inactivo'}>
+                    <td>
+                      <strong>{p.nombre}</strong>
+                      {p.descripcion && <div className="tenue">{p.descripcion}</div>}
+                    </td>
+                    <td>{ETIQUETAS_TIPO_VENTA[p.tipoVenta]}</td>
+                    <td className="numero">
+                      {p.tipoVenta === 'abierto'
+                        ? 'del día'
+                        : p.variantes.filter((v) => v.activa).map((v) => (
+                            <div key={v.id}>
+                              {p.tipoVenta === 'variantes' && <span className="tenue">{v.nombre}: </span>}
+                              {pesos(v.precioCentavos)}
+                              {p.tipoVenta === 'peso' && ' /kg'}
+                            </div>
+                          ))}
+                    </td>
+                    <td>{p.estacion === 'barra' ? 'Barra' : 'Cocina'}</td>
+                    <td>
+                      <button
+                        className={`btn chico${p.disponibleHoy ? '' : ' peligro'}`}
+                        onClick={() => accion(async () => { await api.disponibilidad(p.id, !p.disponibleHoy); })}
+                      >
+                        {p.disponibleHoy ? 'Disponible' : 'Agotado'}
+                      </button>
+                    </td>
+                    <td>
+                      <button className="btn chico" onClick={() => setEditando(p)}>Editar</button>
+                    </td>
+                  </tr>
+                ))}
+                {categoria && categoria.productos.length === 0 && (
+                  <tr><td colSpan={6} className="tenue">Esta categoría no tiene productos todavía.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="vista-movil">
+        <div className="barra compacta">
+          <strong>Menú</strong>
+          <span className="tenue">solo consulta</span>
+        </div>
+        <div className="columna-menu">
+          <MenuVenta categorias={menu} estilo={estilo} onElegir={() => {}} />
         </div>
       </div>
 

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, ErrorApi } from '../api/cliente';
 import { Lienzo } from '../componentes/Lienzo';
 import { PanelPropiedades } from '../componentes/PanelPropiedades';
 import { usePlano } from '../hooks/usePlano';
-import type { Barra, Elemento, Geometria, Mesa, Seleccion, TipoElemento, Zona } from '../tipos';
+import { ETIQUETAS_ESTADO, type Barra, type Elemento, type EstadoMesa, type Geometria, type Mesa, type Seleccion, type TipoElemento, type Zona } from '../tipos';
 
 const CUADRICULA = 20;
 const PASO_TECLADO = 20;
@@ -12,6 +13,7 @@ type Clave = string; // "mesa:12" | "elemento:3" | "barra:1"
 const clave = (tipo: 'mesa' | 'elemento' | 'barra', id: number): Clave => `${tipo}:${id}`;
 
 export function EditorPlano() {
+  const navegar = useNavigate();
   const [layoutId, setLayoutId] = useState<number | undefined>(undefined);
   const { plano, setPlano, cargando, error, setError, recargar } = usePlano(layoutId);
 
@@ -364,15 +366,19 @@ export function EditorPlano() {
     );
   }
 
+  const zonaConsulta = zona ? { ...zona, mesas: zona.mesas.filter((m) => m.activa), barras: zona.barras.filter((b) => b.activa) } : undefined;
+
   return (
     <div className="contenido">
       {/* Diseñar el comedor es trabajo de escritorio: se hace una vez, con calma
-          y con ratón. En el servicio diario el mesero no pasa por aquí. */}
+          y con ratón. En un teléfono se cambia por una vista de solo consulta,
+          para ubicar mesas y zonas sin poder moverlas. */}
       <div className="aviso info editor-solo-escritorio">
-        El editor del comedor está pensado para computadora. En un teléfono usa
-        los campos de posición del panel derecho.
+        El editor del comedor está pensado para computadora. En un teléfono puedes consultar el plano aquí abajo.
       </div>
-      <div className="barra">
+
+      <div className="vista-escritorio">
+        <div className="barra">
         <label>
           Distribución
           <select
@@ -488,6 +494,52 @@ export function EditorPlano() {
           onDuplicar={duplicar}
           onEliminar={eliminarSeleccion}
         />
+      </div>
+      </div>
+
+      <div className="vista-movil">
+        <div className="barra compacta">
+          <strong>Comedor</strong>
+          <span className="tenue">solo consulta</span>
+        </div>
+
+        <div className="pestanas">
+          {zonas.map((z) => (
+            <button
+              key={z.id}
+              className={`pestana${z.id === zona?.id ? ' activa' : ''}`}
+              onClick={() => setZonaId(z.id)}
+            >
+              {z.nombre}
+            </button>
+          ))}
+        </div>
+
+        <div className="cuerpo">
+          {zonaConsulta ? (
+            <Lienzo
+              zona={zonaConsulta}
+              escala={1}
+              cuadricula={0}
+              editable={false}
+              mostrarEstados
+              seleccion={null}
+              onSeleccionar={() => {}}
+              onGeometria={() => {}}
+              onAbrirMesa={(mesa) => navegar(`/orden/${mesa.id}`)}
+            />
+          ) : (
+            <div className="vacio">No hay zonas configuradas.</div>
+          )}
+        </div>
+
+        <div className="leyenda">
+          {(Object.keys(ETIQUETAS_ESTADO) as EstadoMesa[]).map((estado) => (
+            <span key={estado}>
+              <i className={`muestra-estado estado-${estado}`} /> {ETIQUETAS_ESTADO[estado]}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
