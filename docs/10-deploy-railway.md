@@ -51,18 +51,14 @@ la raíz para instalar dependencias del monorepo (`npm ci`).
      origen que la API, no hay peticiones cross-origin que el navegador deba
      autorizar. Solo defínela si vas a consumir la API desde otro dominio.
 5. Primer deploy: Railway corre `npm run build` y luego `npm run start`. Al
-   arrancar, el servidor **migra la base de datos automáticamente**
-   (`server/src/index.ts`), así que la primera vez crea las tablas solas.
-6. **Sembrar los datos de ejemplo** (equipo, PINs, mesas, menú) una sola vez,
-   contra la base ya desplegada. La forma más simple es correrlo localmente
-   apuntando a la misma base montada en el volumen, usando la CLI de Railway:
-   ```bash
-   railway run --service <nombre-del-servicio> npm run db:seed --workspace server
-   ```
-   (requiere `DB_RUTA=/data/pos.sqlite` visible en ese entorno, que ya quedó
-   configurada en el paso 4). Alternativamente, ejecútalo una vez vía
-   **Railway Shell** desde el dashboard del servicio.
-7. Abre el dominio que Railway asigna (o el dominio propio que configures) y
+   arrancar, el servidor **migra y siembra la base de datos automáticamente**
+   (`server/src/index.ts` llama a `migrar()` y luego a `sembrar()`), así que la
+   primera vez crea las tablas y el equipo/menú/comedor de ejemplo solo, sin
+   necesidad de correr nada a mano ni tener la CLI de Railway instalada.
+   `sembrar()` (`server/src/db/semilla.ts`) es idempotente: revisa si ya hay
+   datos antes de insertar, así que en cada reinicio o redeploy posterior no
+   duplica nada — se puede llamar en cada arranque sin riesgo.
+6. Abre el dominio que Railway asigna (o el dominio propio que configures) y
    entra con cualquiera de los PINs de `docs/09-demo-github-pages.md` /
    `README.md` para verificar el flujo completo: Mis mesas → tomar orden →
    enviar comanda → cocina → cobrar → caja.
