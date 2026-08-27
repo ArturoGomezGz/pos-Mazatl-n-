@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ErrorApi } from '../api/cliente';
 import { Dialogo } from '../componentes/Dialogo';
 import { MenuVenta } from '../componentes/MenuVenta';
@@ -476,83 +476,264 @@ function VariantesExistentes({ producto, onCambio }: { producto: Producto; onCam
 
 /* ── Grupos de modificadores ─────────────────────────────────────────── */
 
+/** Feedback de guardado. El dueño necesita ver que su cambio quedó; si el
+ *  servidor lo rechaza, el error sube a la vista y el campo se revierte. */
+function useGuardado(alFallar: (mensaje: string) => void) {
+  const [estado, setEstado] = useState<'idle' | 'guardando' | 'guardado'>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const ejecutar = useCallback(
+    async (fn: () => Promise<unknown>) => {
+      setEstado('guardando');
+      try {
+        await fn();
+        setEstado('guardado');
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => setEstado('idle'), 2000);
+        return true;
+      } catch (e) {
+        setEstado('idle');
+        alFallar(e instanceof ErrorApi ? e.message : 'No se pudo guardar el cambio');
+        return false;
+      }
+    },
+    [alFallar],
+  );
+
+  return { estado, ejecutar };
+}
+
+function MarcaGuardado({ estado }: { estado: 'idle' | 'guardando' | 'guardado' }) {
+  if (estado === 'idle') return null;
+  return (
+    <span className={`marca-guardado${estado === 'guardado' ? ' ok' : ''}`}>
+      {estado === 'guardando' ? 'Guardando…' : 'Guardado ✓'}
+    </span>
+  );
+}
+
+const clampNum = (n: number, lo: number, hi: number) => Math.min(Math.max(Number.isFinite(n) ? n : lo, lo), hi);
+
+function resumenGrupo(g: GrupoModificador) {
+  const n = g.modificadores.length;
+  const rango =
+    g.minSelecciones === 0 && g.maxSelecciones === 1
+      ? 'opcional, elige uno'
+      : g.minSelecciones === g.maxSelecciones
+        ? `elige exactamente ${g.minSelecciones}`
+        : g.minSelecciones === 0
+          ? `opcional, hasta ${g.maxSelecciones}`
+          : `elige de ${g.minSelecciones} a ${g.maxSelecciones}`;
+  return `${rango} · ${n} ${n === 1 ? 'opción' : 'opciones'}`;
+}
+
+function textoLimites(min: number, max: number) {
+  if (min === 0 && max === 1) return 'El mesero puede elegir una opción o ninguna.';
+  if (min === 0) return `El mesero puede elegir hasta ${max} opciones, o ninguna.`;
+  if (min === max) return `El mesero debe elegir exactamente ${min} ${min === 1 ? 'opción' : 'opciones'}.`;
+  return `El mesero debe elegir entre ${min} y ${max} opciones.`;
+}
+
+/** Lista de grupos (colapsada) + editor de uno a la vez. Separa "ver qué grupos
+ *  tengo" de "editar este grupo", que antes vivían en un solo formulario plano. */
 function DialogoGrupos({ grupos, onCerrar, onCambio }: { grupos: GrupoModificador[]; onCerrar: () => void; onCambio: () => void }) {
-  const [nombre, setNombre] = useState('');
-  const [min, setMin] = useState(0);
-  const [max, setMax] = useState(1);
+  const [creando, setCreando] = useState(false);
+  const [expandido, setExpandido] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <Dialogo titulo="Grupos de modificadores" onCerrar={onCerrar} ancho={620}>
       <p className="detalle-dialogo">
-        Un grupo se reutiliza entre productos: “Término” sirve para todos los filetes. Con mínimo 1 el mesero está obligado a elegir.
+        Un grupo se reutiliza entre productos: “Término” sirve para todos los filetes. Elige un grupo para editarlo.
       </p>
 
-      {grupos.map((g) => (
-        <GrupoEditable key={g.id} grupo={g} onCambio={onCambio} />
-      ))}
+      {error && <div className="aviso">{error}</div>}
 
-      <div className="grupo-opciones">
-        <h3>Nuevo grupo</h3>
-        <div className="campo">
-          <label htmlFor="g-nombre">Nombre</label>
-          <input id="g-nombre" value={nombre} placeholder="Término, Extras, Sin ingrediente" onChange={(e) => setNombre(e.target.value)} />
-        </div>
-        <div className="campo-doble">
-          <div className="campo">
-            <label htmlFor="g-min">Mínimo a elegir</label>
-            <input id="g-min" type="number" min={0} max={10} value={min} onChange={(e) => setMin(Number(e.target.value))} />
-          </div>
-          <div className="campo">
-            <label htmlFor="g-max">Máximo a elegir</label>
-            <input id="g-max" type="number" min={1} max={10} value={max} onChange={(e) => setMax(Number(e.target.value))} />
-          </div>
-        </div>
-        <button
-          className="btn primario"
-          disabled={!nombre.trim()}
-          onClick={() =>
-            api
-              .crearGrupo({ nombre: nombre.trim(), minSelecciones: min, maxSelecciones: Math.max(max, min), modificadores: [] })
-              .then(() => {
-                setNombre('');
-                onCambio();
-              })
-          }
-        >
-          Crear grupo
+      <div className="barra-grupos">
+        <span className="tenue">{grupos.length} {grupos.length === 1 ? 'grupo' : 'grupos'}</span>
+        <button className="btn chico primario" onClick={() => { setCreando(true); setExpandido(null); setError(null); }}>
+          + Nuevo grupo
         </button>
       </div>
+
+      {creando && (
+        <GrupoNuevo
+          alFallar={setError}
+          onCancelar={() => setCreando(false)}
+          onCreado={(id) => { setCreando(false); setError(null); setExpandido(id); onCambio(); }}
+        />
+      )}
+
+      {grupos.length === 0 && !creando && (
+        <p className="tenue">Todavía no hay grupos. Crea el primero con “+ Nuevo grupo”.</p>
+      )}
+
+      <ul className="lista-grupos">
+        {grupos.map((g) => (
+          <li key={g.id} className={`grupo-fila${expandido === g.id ? ' abierta' : ''}`}>
+            <button
+              className="grupo-fila__cabecera"
+              onClick={() => { setExpandido((p) => (p === g.id ? null : g.id)); setError(null); }}
+            >
+              <span className="grupo-fila__nombre">{g.nombre}</span>
+              <span className="grupo-fila__resumen">{resumenGrupo(g)}</span>
+              <span className="grupo-fila__accion">{expandido === g.id ? 'Cerrar' : 'Editar'}</span>
+            </button>
+            {expandido === g.id && (
+              <div className="grupo-fila__cuerpo">
+                <GrupoEditor
+                  grupo={g}
+                  alFallar={setError}
+                  onCambio={onCambio}
+                  onEliminado={() => { setExpandido(null); setError(null); onCambio(); }}
+                />
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
     </Dialogo>
   );
 }
 
-/** Un grupo existente: nombre y límites se editan en vivo (al salir del campo),
- *  igual que los tamaños de un producto. Cada opción se renombra y se le cambia
- *  el precio sin tocar las demás. */
-function GrupoEditable({ grupo, onCambio }: { grupo: GrupoModificador; onCambio: () => void }) {
-  const [nueva, setNueva] = useState({ nombre: '', precio: '' });
-  const centavos = (t: string) => Math.round(Number(t || '0') * 100);
-  const guardar = (cambios: Parameters<typeof api.actualizarGrupo>[1]) =>
-    api.actualizarGrupo(grupo.id, cambios).then(onCambio).catch(() => {});
+/** Alta rápida: solo el nombre y dos preguntas de sí/no. El ajuste fino de
+ *  mín/máx vive en el editor, que se abre en cuanto se crea. */
+function GrupoNuevo({
+  alFallar,
+  onCancelar,
+  onCreado,
+}: {
+  alFallar: (m: string) => void;
+  onCancelar: () => void;
+  onCreado: (id: number) => void;
+}) {
+  const [nombre, setNombre] = useState('');
+  const [obligatorio, setObligatorio] = useState(false);
+  const [varias, setVarias] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+
+  const crear = async () => {
+    setGuardando(true);
+    const minSelecciones = obligatorio ? 1 : 0;
+    const maxSelecciones = varias ? 10 : 1;
+    try {
+      const g = await api.crearGrupo({ nombre: nombre.trim(), minSelecciones, maxSelecciones, modificadores: [] });
+      onCreado(g.id);
+    } catch (e) {
+      alFallar(e instanceof ErrorApi ? e.message : 'No se pudo crear el grupo');
+      setGuardando(false);
+    }
+  };
 
   return (
-    <div className="grupo-opciones">
-      <div className="campo-doble">
+    <div className="grupo-fila abierta">
+      <div className="grupo-fila__cuerpo">
         <div className="campo">
-          <label>Nombre del grupo</label>
+          <label htmlFor="g-nombre">Nombre del grupo</label>
           <input
-            defaultValue={grupo.nombre}
+            id="g-nombre"
+            value={nombre}
+            autoFocus
             maxLength={40}
-            onBlur={(e) => {
-              const v = e.target.value.trim();
-              if (v && v !== grupo.nombre) guardar({ nombre: v });
-            }}
+            placeholder="Término, Extras, Sin ingrediente"
+            onChange={(e) => setNombre(e.target.value)}
           />
         </div>
-        <button className="btn chico peligro" onClick={() => confirm(`¿Eliminar el grupo ${grupo.nombre}?`) && api.eliminarGrupo(grupo.id).then(onCambio)}>
-          Eliminar grupo
-        </button>
+        <label className="campo-check">
+          <input type="checkbox" checked={obligatorio} onChange={(e) => setObligatorio(e.target.checked)} />
+          El mesero está obligado a elegir una opción
+        </label>
+        <label className="campo-check">
+          <input type="checkbox" checked={varias} onChange={(e) => setVarias(e.target.checked)} />
+          Puede elegir varias opciones a la vez
+        </label>
+        <div className="acciones-dialogo">
+          <button className="btn chico" onClick={onCancelar}>Cancelar</button>
+          <button className="btn chico primario" disabled={!nombre.trim() || guardando} onClick={crear}>
+            {guardando ? 'Creando…' : 'Crear grupo'}
+          </button>
+        </div>
       </div>
+    </div>
+  );
+}
+
+/** Editor de un grupo. Campos controlados en local, sincronizados con lo que
+ *  responde el servidor: si un guardado falla, el campo vuelve solo. */
+function GrupoEditor({
+  grupo,
+  alFallar,
+  onCambio,
+  onEliminado,
+}: {
+  grupo: GrupoModificador;
+  alFallar: (m: string) => void;
+  onCambio: () => void;
+  onEliminado: () => void;
+}) {
+  const { estado, ejecutar } = useGuardado(alFallar);
+  const [nombre, setNombre] = useState(grupo.nombre);
+  const [min, setMin] = useState(grupo.minSelecciones);
+  const [max, setMax] = useState(grupo.maxSelecciones);
+  const [nueva, setNueva] = useState({ nombre: '', precio: '' });
+
+  useEffect(() => {
+    setNombre(grupo.nombre);
+    setMin(grupo.minSelecciones);
+    setMax(grupo.maxSelecciones);
+  }, [grupo.nombre, grupo.minSelecciones, grupo.maxSelecciones]);
+
+  const centavos = (t: string) => Math.round(Number(t || '0') * 100);
+
+  async function aplicar(cambios: Parameters<typeof api.actualizarGrupo>[1]) {
+    const ok = await ejecutar(() => api.actualizarGrupo(grupo.id, cambios));
+    if (ok) onCambio();
+    else {
+      setNombre(grupo.nombre);
+      setMin(grupo.minSelecciones);
+      setMax(grupo.maxSelecciones);
+    }
+  }
+
+  function guardarNombre() {
+    const v = nombre.trim();
+    if (!v) return setNombre(grupo.nombre);
+    if (v !== grupo.nombre) aplicar({ nombre: v });
+  }
+
+  /** min ≤ max siempre: al subir el mínimo se arrastra el máximo, y viceversa. */
+  function commitLimites(m: number, x: number) {
+    setMin(m);
+    setMax(x);
+    if (m !== grupo.minSelecciones || x !== grupo.maxSelecciones) {
+      aplicar({ minSelecciones: m, maxSelecciones: x });
+    }
+  }
+  function guardarMin(raw: number) {
+    const m = clampNum(raw, 0, 10);
+    commitLimites(m, Math.max(m, max));
+  }
+  function guardarMax(raw: number) {
+    const x = clampNum(raw, 1, 10);
+    commitLimites(Math.min(min, x), x);
+  }
+
+  const eliminar = () => {
+    if (!confirm(`¿Eliminar el grupo “${grupo.nombre}”? Se quitará de los productos que lo usan.`)) return;
+    api
+      .eliminarGrupo(grupo.id)
+      .then(onEliminado)
+      .catch((e) => alFallar(e instanceof ErrorApi ? e.message : 'No se pudo eliminar el grupo'));
+  };
+
+  return (
+    <>
+      <div className="campo">
+        <label>Nombre del grupo <MarcaGuardado estado={estado} /></label>
+        <input value={nombre} maxLength={40} onChange={(e) => setNombre(e.target.value)} onBlur={guardarNombre} />
+      </div>
+
       <div className="campo-doble">
         <div className="campo">
           <label>Mínimo a elegir</label>
@@ -560,11 +741,10 @@ function GrupoEditable({ grupo, onCambio }: { grupo: GrupoModificador; onCambio:
             type="number"
             min={0}
             max={10}
-            defaultValue={grupo.minSelecciones}
-            onBlur={(e) => {
-              const n = Number(e.target.value);
-              if (n !== grupo.minSelecciones) guardar({ minSelecciones: n });
-            }}
+            inputMode="numeric"
+            value={min}
+            onChange={(e) => setMin(e.target.value === '' ? 0 : Number(e.target.value))}
+            onBlur={(e) => guardarMin(Number(e.target.value))}
           />
         </div>
         <div className="campo">
@@ -573,73 +753,130 @@ function GrupoEditable({ grupo, onCambio }: { grupo: GrupoModificador; onCambio:
             type="number"
             min={1}
             max={10}
-            defaultValue={grupo.maxSelecciones}
-            onBlur={(e) => {
-              const n = Number(e.target.value);
-              if (n !== grupo.maxSelecciones) guardar({ maxSelecciones: n });
-            }}
+            inputMode="numeric"
+            value={max}
+            onChange={(e) => setMax(e.target.value === '' ? 1 : Number(e.target.value))}
+            onBlur={(e) => guardarMax(Number(e.target.value))}
           />
         </div>
       </div>
+      <p className="ayuda-limites">{textoLimites(min, max)}</p>
 
-      {grupo.modificadores.map((m: Modificador) => (
-        <div key={m.id} className="campo-doble">
-          <div className="campo">
-            <label>Opción</label>
-            <input
-              defaultValue={m.nombre}
-              maxLength={40}
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                if (v && v !== m.nombre) api.actualizarModificador(m.id, { nombre: v }).then(onCambio).catch(() => {});
-              }}
-            />
-          </div>
-          <div className="campo">
-            <label>Precio extra</label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                defaultValue={m.precioExtraCentavos / 100}
-                onBlur={(e) => {
-                  const c = centavos(e.target.value);
-                  if (c !== m.precioExtraCentavos) api.actualizarModificador(m.id, { precioExtraCentavos: c }).then(onCambio).catch(() => {});
-                }}
-              />
-              <button className="btn chico peligro" onClick={() => api.eliminarModificador(m.id).then(onCambio).catch(() => {})}>✕</button>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      <div className="campo-doble">
-        <div className="campo">
-          <label>Nueva opción</label>
-          <input value={nueva.nombre} placeholder="Sin cebolla" maxLength={40} onChange={(e) => setNueva({ ...nueva, nombre: e.target.value })} />
-        </div>
-        <div className="campo">
-          <label>Precio extra (0 si no cuesta)</label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input type="number" min={0} step="0.01" value={nueva.precio} onChange={(e) => setNueva({ ...nueva, precio: e.target.value })} />
-            <button
-              className="btn chico"
-              disabled={!nueva.nombre.trim()}
-              onClick={() =>
-                api
-                  .crearModificador({ grupoId: grupo.id, nombre: nueva.nombre.trim(), precioExtraCentavos: centavos(nueva.precio) })
-                  .then(() => {
-                    setNueva({ nombre: '', precio: '' });
-                    onCambio();
-                  })
-              }
-            >
-              +
-            </button>
-          </div>
-        </div>
+      <div className="opcion-lista">
+        {grupo.modificadores.length === 0 && (
+          <p className="tenue">Este grupo aún no tiene opciones. Agrega al menos una abajo.</p>
+        )}
+        {grupo.modificadores.map((m: Modificador) => (
+          <OpcionFila key={m.id} opcion={m} alFallar={alFallar} onCambio={onCambio} />
+        ))}
       </div>
+
+      <div className="opcion-fila nueva">
+        <input
+          className="opcion-fila__nombre"
+          value={nueva.nombre}
+          placeholder="Nueva opción (ej. Sin cebolla)"
+          maxLength={40}
+          onChange={(e) => setNueva({ ...nueva, nombre: e.target.value })}
+        />
+        <div className="opcion-fila__precio">
+          <span className="prefijo">+$</span>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            placeholder="0"
+            value={nueva.precio}
+            onChange={(e) => setNueva({ ...nueva, precio: e.target.value })}
+          />
+        </div>
+        <button
+          className="btn chico"
+          disabled={!nueva.nombre.trim()}
+          onClick={() =>
+            api
+              .crearModificador({ grupoId: grupo.id, nombre: nueva.nombre.trim(), precioExtraCentavos: centavos(nueva.precio) })
+              .then(() => {
+                setNueva({ nombre: '', precio: '' });
+                onCambio();
+              })
+              .catch((e) => alFallar(e instanceof ErrorApi ? e.message : 'No se pudo agregar la opción'))
+          }
+        >
+          Agregar
+        </button>
+      </div>
+
+      <div className="grupo-editor__pie">
+        <button className="enlace-peligro" onClick={eliminar}>Eliminar grupo</button>
+      </div>
+    </>
+  );
+}
+
+/** Una opción del grupo: nombre y precio extra, guardado al salir del campo con
+ *  su propio indicador. */
+function OpcionFila({ opcion, alFallar, onCambio }: { opcion: Modificador; alFallar: (m: string) => void; onCambio: () => void }) {
+  const { estado, ejecutar } = useGuardado(alFallar);
+  const [nombre, setNombre] = useState(opcion.nombre);
+  const [precio, setPrecio] = useState(String(opcion.precioExtraCentavos / 100));
+
+  useEffect(() => {
+    setNombre(opcion.nombre);
+    setPrecio(String(opcion.precioExtraCentavos / 100));
+  }, [opcion.nombre, opcion.precioExtraCentavos]);
+
+  async function aplicar(cambios: Parameters<typeof api.actualizarModificador>[1]) {
+    const ok = await ejecutar(() => api.actualizarModificador(opcion.id, cambios));
+    if (ok) onCambio();
+    else {
+      setNombre(opcion.nombre);
+      setPrecio(String(opcion.precioExtraCentavos / 100));
+    }
+  }
+
+  return (
+    <div className="opcion-fila">
+      <input
+        className="opcion-fila__nombre"
+        value={nombre}
+        maxLength={40}
+        onChange={(e) => setNombre(e.target.value)}
+        onBlur={() => {
+          const v = nombre.trim();
+          if (!v) return setNombre(opcion.nombre);
+          if (v !== opcion.nombre) aplicar({ nombre: v });
+        }}
+      />
+      <div className="opcion-fila__precio">
+        <span className="prefijo">+$</span>
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          inputMode="decimal"
+          value={precio}
+          onChange={(e) => setPrecio(e.target.value)}
+          onBlur={() => {
+            const c = Math.round(Number(precio || '0') * 100);
+            if (c !== opcion.precioExtraCentavos) aplicar({ precioExtraCentavos: c });
+          }}
+        />
+      </div>
+      <MarcaGuardado estado={estado} />
+      <button
+        className="btn fantasma opcion-fila__quitar"
+        aria-label={`Quitar ${opcion.nombre}`}
+        onClick={() =>
+          api
+            .eliminarModificador(opcion.id)
+            .then(onCambio)
+            .catch((e) => alFallar(e instanceof ErrorApi ? e.message : 'No se pudo quitar la opción'))
+        }
+      >
+        ✕
+      </button>
     </div>
   );
 }
