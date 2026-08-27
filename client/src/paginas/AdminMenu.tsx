@@ -11,6 +11,7 @@ import {
   type Categoria,
   type Estacion,
   type GrupoModificador,
+  type Modificador,
   type Producto,
   type TipoVenta,
 } from '../tipos';
@@ -487,34 +488,7 @@ function DialogoGrupos({ grupos, onCerrar, onCambio }: { grupos: GrupoModificado
       </p>
 
       {grupos.map((g) => (
-        <div key={g.id} className="grupo-opciones">
-          <h3>
-            {g.nombre} <span className="tenue">· elige de {g.minSelecciones} a {g.maxSelecciones}</span>
-            <button className="btn chico peligro" onClick={() => api.eliminarGrupo(g.id).then(onCambio)}>Eliminar</button>
-          </h3>
-          <div className="opciones">
-            {g.modificadores.map((m) => (
-              <span key={m.id} className="etiqueta">
-                {m.nombre}
-                {m.precioExtraCentavos > 0 && ` +${pesos(m.precioExtraCentavos)}`}
-                <button className="enlace" onClick={() => api.eliminarModificador(m.id).then(onCambio)}>✕</button>
-              </span>
-            ))}
-            <button
-              className="btn chico"
-              onClick={() => {
-                const n = prompt('Nombre de la opción (ej. Sin cebolla):')?.trim();
-                if (!n) return;
-                const extra = prompt('¿Cuesta extra? Monto en pesos (0 si no):', '0') ?? '0';
-                void api
-                  .crearModificador({ grupoId: g.id, nombre: n, precioExtraCentavos: Math.round(Number(extra) * 100) })
-                  .then(onCambio);
-              }}
-            >
-              + Opción
-            </button>
-          </div>
-        </div>
+        <GrupoEditable key={g.id} grupo={g} onCambio={onCambio} />
       ))}
 
       <div className="grupo-opciones">
@@ -549,5 +523,123 @@ function DialogoGrupos({ grupos, onCerrar, onCambio }: { grupos: GrupoModificado
         </button>
       </div>
     </Dialogo>
+  );
+}
+
+/** Un grupo existente: nombre y límites se editan en vivo (al salir del campo),
+ *  igual que los tamaños de un producto. Cada opción se renombra y se le cambia
+ *  el precio sin tocar las demás. */
+function GrupoEditable({ grupo, onCambio }: { grupo: GrupoModificador; onCambio: () => void }) {
+  const [nueva, setNueva] = useState({ nombre: '', precio: '' });
+  const centavos = (t: string) => Math.round(Number(t || '0') * 100);
+  const guardar = (cambios: Parameters<typeof api.actualizarGrupo>[1]) =>
+    api.actualizarGrupo(grupo.id, cambios).then(onCambio).catch(() => {});
+
+  return (
+    <div className="grupo-opciones">
+      <div className="campo-doble">
+        <div className="campo">
+          <label>Nombre del grupo</label>
+          <input
+            defaultValue={grupo.nombre}
+            maxLength={40}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              if (v && v !== grupo.nombre) guardar({ nombre: v });
+            }}
+          />
+        </div>
+        <button className="btn chico peligro" onClick={() => confirm(`¿Eliminar el grupo ${grupo.nombre}?`) && api.eliminarGrupo(grupo.id).then(onCambio)}>
+          Eliminar grupo
+        </button>
+      </div>
+      <div className="campo-doble">
+        <div className="campo">
+          <label>Mínimo a elegir</label>
+          <input
+            type="number"
+            min={0}
+            max={10}
+            defaultValue={grupo.minSelecciones}
+            onBlur={(e) => {
+              const n = Number(e.target.value);
+              if (n !== grupo.minSelecciones) guardar({ minSelecciones: n });
+            }}
+          />
+        </div>
+        <div className="campo">
+          <label>Máximo a elegir</label>
+          <input
+            type="number"
+            min={1}
+            max={10}
+            defaultValue={grupo.maxSelecciones}
+            onBlur={(e) => {
+              const n = Number(e.target.value);
+              if (n !== grupo.maxSelecciones) guardar({ maxSelecciones: n });
+            }}
+          />
+        </div>
+      </div>
+
+      {grupo.modificadores.map((m: Modificador) => (
+        <div key={m.id} className="campo-doble">
+          <div className="campo">
+            <label>Opción</label>
+            <input
+              defaultValue={m.nombre}
+              maxLength={40}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v && v !== m.nombre) api.actualizarModificador(m.id, { nombre: v }).then(onCambio).catch(() => {});
+              }}
+            />
+          </div>
+          <div className="campo">
+            <label>Precio extra</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                defaultValue={m.precioExtraCentavos / 100}
+                onBlur={(e) => {
+                  const c = centavos(e.target.value);
+                  if (c !== m.precioExtraCentavos) api.actualizarModificador(m.id, { precioExtraCentavos: c }).then(onCambio).catch(() => {});
+                }}
+              />
+              <button className="btn chico peligro" onClick={() => api.eliminarModificador(m.id).then(onCambio).catch(() => {})}>✕</button>
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <div className="campo-doble">
+        <div className="campo">
+          <label>Nueva opción</label>
+          <input value={nueva.nombre} placeholder="Sin cebolla" maxLength={40} onChange={(e) => setNueva({ ...nueva, nombre: e.target.value })} />
+        </div>
+        <div className="campo">
+          <label>Precio extra (0 si no cuesta)</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input type="number" min={0} step="0.01" value={nueva.precio} onChange={(e) => setNueva({ ...nueva, precio: e.target.value })} />
+            <button
+              className="btn chico"
+              disabled={!nueva.nombre.trim()}
+              onClick={() =>
+                api
+                  .crearModificador({ grupoId: grupo.id, nombre: nueva.nombre.trim(), precioExtraCentavos: centavos(nueva.precio) })
+                  .then(() => {
+                    setNueva({ nombre: '', precio: '' });
+                    onCambio();
+                  })
+              }
+            >
+              +
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

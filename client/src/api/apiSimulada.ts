@@ -1038,6 +1038,15 @@ export const apiSimulada = {
     persistir();
     return construirGrupos().find((x) => x.id === g.id)!;
   },
+  actualizarGrupo: async (id: number, cambios: { nombre?: string; minSelecciones?: number; maxSelecciones?: number; orden?: number }) => {
+    await esperar();
+    const g = A.grupos.find((x) => x.id === id);
+    if (!g) throw new ErrorApi('Grupo de modificadores no encontrado', 404);
+    Object.assign(g, cambios);
+    if (g.maxSelecciones < g.minSelecciones) g.maxSelecciones = g.minSelecciones;
+    persistir();
+    return construirGrupos().find((x) => x.id === id)!;
+  },
   eliminarGrupo: async (id: number) => {
     await esperar();
     A.grupos = A.grupos.filter((g) => g.id !== id);
@@ -1050,6 +1059,14 @@ export const apiSimulada = {
     await esperar();
     const m: ModificadorInterno = { id: nuevoId(), grupoId: datos.grupoId, nombre: datos.nombre, precioExtraCentavos: datos.precioExtraCentavos, activo: true, orden: A.modificadores.filter((x) => x.grupoId === datos.grupoId).length };
     A.modificadores.push(m);
+    persistir();
+    return { ...m };
+  },
+  actualizarModificador: async (id: number, cambios: { nombre?: string; precioExtraCentavos?: number; orden?: number; activo?: boolean }) => {
+    await esperar();
+    const m = A.modificadores.find((x) => x.id === id);
+    if (!m) throw new ErrorApi('Modificador no encontrado', 404);
+    Object.assign(m, cambios);
     persistir();
     return { ...m };
   },

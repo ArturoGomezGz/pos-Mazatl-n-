@@ -163,9 +163,17 @@ const apiReal = {
 
   crearGrupo: (datos: { nombre: string; minSelecciones: number; maxSelecciones: number; modificadores: { nombre: string; precioExtraCentavos: number }[] }) =>
     peticion<GrupoModificador>('/menu/grupos', { method: 'POST', ...json(datos) }),
+  actualizarGrupo: (
+    id: number,
+    cambios: { nombre?: string; minSelecciones?: number; maxSelecciones?: number; orden?: number },
+  ) => peticion<GrupoModificador>(`/menu/grupos/${id}`, { method: 'PATCH', ...json(cambios) }),
   eliminarGrupo: (id: number) => peticion<unknown>(`/menu/grupos/${id}`, { method: 'DELETE' }),
   crearModificador: (datos: { grupoId: number; nombre: string; precioExtraCentavos: number }) =>
     peticion<unknown>('/menu/modificadores', { method: 'POST', ...json(datos) }),
+  actualizarModificador: (
+    id: number,
+    cambios: { nombre?: string; precioExtraCentavos?: number; orden?: number; activo?: boolean },
+  ) => peticion<unknown>(`/menu/modificadores/${id}`, { method: 'PATCH', ...json(cambios) }),
   eliminarModificador: (id: number) => peticion<unknown>(`/menu/modificadores/${id}`, { method: 'DELETE' }),
 
   /* ── Órdenes ────────────────────────────────────────────────────── */
